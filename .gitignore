@@ -1,0 +1,11 @@
+node_modules/
+build/
+dist/
+.next/
+coverage/
+.DS_Store
+*.log
+.env*
+.env
+!.env.example
+.tagpuan_db.json

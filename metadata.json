@@ -1,0 +1,6 @@
+{
+  "name": "TAGPUAN ERP",
+  "description": "Tagpuan Home of Authentic Burger & Siomai. Multi-branch enterprise resource planning, AI Agent Command Center, automated audit, real-time KDS, POS order engine, payments, recipe inventory, loyalty, payroll, and PWA.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

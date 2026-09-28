@@ -1,0 +1,1930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tagpuan Food Hub - Ordering System & POS</title>
+  <!-- TAILWIND CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- SUPABASE JS CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          colors: {
+            brand: {
+              green: '#CDEBC5',
+              darkGreen: '#1b4332',
+              bg: '#0F1115',
+              surface: '#161922',
+              card: '#1F2430',
+              border: '#2D3345',
+              accent: '#E2FAD8'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #161922; }
+    ::-webkit-scrollbar-thumb { background: #2D3345; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #CDEBC5; }
+    @media print {
+      body * { visibility: hidden !important; }
+      #printableReceipt, #printableReceipt * { visibility: visible !important; }
+      #printableReceipt { position: fixed !important; left: 0 !important; top: 0 !important; width: 100% !important; margin: 0 !important; padding: 16px !important; }
+    }
+    .animate-pop { animation: pop 0.18s ease-out; }
+    @keyframes pop {
+      0% { transform: scale(0.96); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+  </style>
+</head>
+<body class="bg-brand-bg text-zinc-100 font-sans min-h-screen flex flex-col selection:bg-brand-green selection:text-black">
+
+  <!-- ========================================== -->
+  <!-- MAIN APP WRAPPER (HIDDEN DURING DECOY MODE) -->
+  <!-- ========================================== -->
+  <div id="mainAppWrapper" class="flex flex-col min-h-screen">
+
+    <!-- TOP BRAND HEADER -->
+    <header class="sticky top-0 z-40 bg-brand-surface/95 backdrop-blur-md border-b border-brand-border px-4 py-3 sm:px-6">
+      <div class="max-w-7xl mx-auto flex items-center justify-between gap-4">
+        <div class="flex items-center gap-3 select-none">
+          <div id="brandLogoBtn" title="Triple-click for Master Security Access" class="w-11 h-11 rounded-2xl bg-brand-green text-brand-bg flex items-center justify-center font-black text-xl shadow-lg cursor-pointer transform active:scale-95 transition-all hover:ring-2 hover:ring-brand-green/50">
+            T
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h1 id="brandTitleText" class="text-base sm:text-lg font-black tracking-tight text-white cursor-pointer hover:text-brand-green transition">TAGPUAN</h1>
+              <span id="systemModeBadge" class="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-brand-card text-brand-green border border-brand-border">
+                Customer Kiosk
+              </span>
+            </div>
+            <p class="text-[11px] text-zinc-400 font-medium">Home of Authentic Burger & Siomai</p>
+          </div>
+        </div>
+
+        <!-- RIGHT CONTROLS -->
+        <div class="flex items-center gap-2 sm:gap-3">
+          <!-- NAVIGATION FOR LOGGED IN STAFF/OWNER -->
+          <button id="navPosBtn" onclick="switchMainView('pos')" class="hidden px-3.5 py-1.5 rounded-xl bg-brand-card hover:bg-zinc-700 text-xs font-bold text-zinc-200 border border-brand-border transition flex items-center gap-1.5">
+            <span>🖥️ Cashier POS</span>
+          </button>
+
+          <button id="navKdsBtn" onclick="switchMainView('kds')" class="hidden px-3.5 py-1.5 rounded-xl bg-brand-card hover:bg-zinc-700 text-xs font-bold text-zinc-200 border border-brand-border transition flex items-center gap-1.5">
+            <span>🍳 Kitchen KDS</span>
+            <span id="kdsBadgeCount" class="w-4 h-4 rounded-full bg-amber-500 text-black text-[10px] font-bold flex items-center justify-center">0</span>
+          </button>
+
+          <button id="navMenuBtn" onclick="switchMainView('menu')" class="px-3.5 py-1.5 rounded-xl bg-brand-green text-brand-bg text-xs font-extrabold transition shadow-sm flex items-center gap-1.5">
+            <span>📋 Menu</span>
+          </button>
+
+          <button id="ownerDashboardBtn" onclick="openOwnerDashboardModal()" class="hidden px-3 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-black text-xs font-black transition flex items-center gap-1.5 shadow-md">
+            <span>👑 Owner Hub</span>
+          </button>
+
+          <button id="lockSystemBtn" onclick="lockBackToCustomerMode()" class="hidden px-3 py-1.5 rounded-xl bg-red-950/60 hover:bg-red-900 border border-red-700/50 text-red-300 text-xs font-bold transition flex items-center gap-1" title="Lock back to Customer Kiosk">
+            <span>🔒 Lock</span>
+          </button>
+
+          <!-- DISCRETE LOCK ICON TRIGGER -->
+          <button id="discreteLockBtn" onclick="openPinModal()" class="p-2.5 rounded-xl bg-brand-card hover:bg-zinc-700 text-zinc-400 hover:text-brand-green border border-brand-border transition" title="Staff / Owner Access">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+          </button>
+
+          <!-- HEADER CART TRIGGER -->
+          <button id="headerCartBtn" onclick="openCartDrawer()" class="relative px-3.5 py-1.5 rounded-xl bg-brand-card hover:border-brand-green/50 border border-brand-border text-xs font-bold text-white flex items-center gap-2 transition">
+            <span>🛒</span>
+            <span class="hidden sm:inline">Cart</span>
+            <span id="headerCartCount" class="px-1.5 py-0.2 rounded-full bg-brand-green text-black font-mono font-bold text-[11px]">0</span>
+            <span id="headerCartTotal" class="font-mono font-bold text-brand-green text-xs">₱0</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- OWNER ACTIVE BANNER -->
+    <div id="ownerActiveBanner" class="hidden bg-gradient-to-r from-amber-500/20 via-amber-600/15 to-emerald-500/20 border-b border-amber-500/30 px-4 py-2">
+      <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div class="flex items-center gap-2 text-amber-300 font-bold">
+          <span class="px-2 py-0.5 rounded bg-amber-400 text-black font-mono font-black text-[10px]">MASTER OWNER</span>
+          <span>Supabase cloud database verified. Menu modification & real-time analytics unlocked.</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="openAddNewItemModal()" class="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs">+ Add New Food</button>
+          <button onclick="openOwnerDashboardModal('reports')" class="px-3 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-black font-bold text-xs">📊 Sales Reports</button>
+          <button onclick="openOwnerDashboardModal('security')" class="px-3 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs border border-zinc-600">🔑 Security & Cloud DB</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN VIEWS CONTAINER -->
+    <main class="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 space-y-6">
+
+      <!-- VIEW 1: CUSTOMER MENU -->
+      <section id="menuView" class="space-y-6">
+        <div class="flex flex-col md:flex-row gap-4 justify-between items-stretch md:items-center">
+          <div class="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none" id="categoryTabsContainer"></div>
+          <div class="relative min-w-[240px]">
+            <input type="text" id="menuSearchInput" placeholder="Search burgers, meals, fries..." oninput="handleSearchChange(this.value)" class="w-full pl-9 pr-4 py-2 rounded-xl bg-brand-surface border border-brand-border text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-brand-green transition" />
+            <span class="absolute left-3 top-2.5 text-zinc-500 text-xs">🔍</span>
+          </div>
+        </div>
+        <div id="foodGridContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5"></div>
+      </section>
+
+      <!-- VIEW 2: CASHIER POS -->
+      <section id="posView" class="hidden space-y-4">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          <!-- POS LEFT: FOOD SELECTOR -->
+          <div class="lg:col-span-8 space-y-4">
+            <div class="flex items-center gap-2 overflow-x-auto pb-2" id="posCategoryTabs"></div>
+            <div id="posGridContainer" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-[680px] overflow-y-auto pr-1"></div>
+          </div>
+
+          <!-- POS RIGHT: ACTIVE ORDER TICKET -->
+          <div class="lg:col-span-4 bg-brand-surface rounded-3xl border border-brand-border p-5 flex flex-col justify-between shadow-xl">
+            <div class="space-y-4">
+              <div class="flex items-center justify-between border-b border-brand-border pb-3">
+                <div>
+                  <h2 class="text-sm font-extrabold text-white flex items-center gap-1.5">
+                    <span>Cashier Register</span>
+                    <span id="posTicketNumber" class="text-xs font-mono text-brand-green font-bold">#ORD-NEW</span>
+                  </h2>
+                  <p class="text-[11px] text-zinc-400">Authenticated Staff / Register</p>
+                </div>
+                <button onclick="clearPosCart()" class="text-xs text-red-400 hover:text-red-300 font-bold">Clear</button>
+              </div>
+
+              <!-- DINING OPTION TOGGLE -->
+              <div class="grid grid-cols-2 gap-2 bg-brand-bg p-1 rounded-xl border border-brand-border text-xs font-bold">
+                <button id="posDiningDineIn" onclick="setPosDining('DINE_IN')" class="py-1.5 rounded-lg bg-brand-card text-brand-green border border-brand-border transition">Dine In</button>
+                <button id="posDiningTakeOut" onclick="setPosDining('TAKE_OUT')" class="py-1.5 rounded-lg text-zinc-400 hover:text-white transition">Take Out</button>
+              </div>
+
+              <!-- ITEMS LIST -->
+              <div id="posTicketItems" class="max-h-64 overflow-y-auto space-y-2 pr-1 divide-y divide-brand-border/40 text-xs">
+                <p class="text-zinc-500 text-center py-8">No items punched yet.<br>Click food on left grid.</p>
+              </div>
+            </div>
+
+            <!-- TOTALS & PUNCH BUTTON -->
+            <div class="border-t border-brand-border pt-4 space-y-3 mt-4">
+              <div class="space-y-1 text-xs">
+                <div class="flex justify-between text-zinc-400">
+                  <span>Subtotal:</span>
+                  <span id="posSubtotal" class="font-mono">₱0.00</span>
+                </div>
+                <div class="flex items-center justify-between text-zinc-400">
+                  <label class="flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox" id="posDiscountCheckbox" onchange="togglePosSeniorDiscount(this.checked)" class="rounded bg-brand-card border-brand-border text-brand-green focus:ring-0" />
+                    <span>Senior / PWD (20%)</span>
+                  </label>
+                  <span id="posDiscountAmount" class="font-mono text-amber-400">-₱0.00</span>
+                </div>
+                <div class="flex justify-between text-sm font-extrabold text-white pt-1">
+                  <span>Payable Total:</span>
+                  <span id="posPayableTotal" class="text-lg font-mono text-brand-green font-black">₱0.00</span>
+                </div>
+              </div>
+
+              <!-- PAYMENT SELECTOR -->
+              <div class="grid grid-cols-3 gap-1.5 pt-1 text-[11px] font-bold">
+                <button id="posPayCash" onclick="setPosPayment('CASH')" class="py-1.5 rounded-lg bg-brand-green text-black font-black">💵 Cash</button>
+                <button id="posPayGcash" onclick="setPosPayment('GCASH')" class="py-1.5 rounded-lg bg-brand-card text-zinc-300 hover:bg-zinc-700">📱 GCash</button>
+                <button id="posPayMaya" onclick="setPosPayment('MAYA')" class="py-1.5 rounded-lg bg-brand-card text-zinc-300 hover:bg-zinc-700">💳 Maya</button>
+              </div>
+
+              <!-- TENDER AMOUNT (CASH CHANGE CALC) -->
+              <div id="posCashTenderRow" class="flex items-center gap-2 pt-1 text-xs">
+                <input type="number" id="posTenderInput" placeholder="Cash Received (₱)" oninput="calcPosChange(this.value)" class="flex-1 px-3 py-1.5 rounded-xl bg-brand-bg border border-brand-border text-white font-mono text-xs focus:border-brand-green" />
+                <span class="text-zinc-400 text-[11px]">Change: <strong id="posChangeDisplay" class="text-brand-green font-mono">₱0.00</strong></span>
+              </div>
+
+              <button onclick="punchPosOrder()" class="w-full py-3 rounded-2xl bg-brand-green hover:bg-[#b8e2af] text-brand-bg font-black text-sm transition shadow-lg flex items-center justify-center gap-2">
+                <span>⚡ Complete & Fire to Kitchen</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VIEW 3: KITCHEN KDS -->
+      <section id="kdsView" class="hidden space-y-4">
+        <div class="flex flex-wrap items-center justify-between bg-brand-surface p-4 rounded-2xl border border-brand-border gap-4">
+          <div>
+            <h2 class="text-base font-extrabold text-white flex items-center gap-2">
+              <span>🍳 Kitchen Display System (KDS)</span>
+              <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-400/20 text-amber-400 font-bold">REAL-TIME SYNC</span>
+            </h2>
+            <p class="text-xs text-zinc-400">Active tickets update automatically when an order is placed.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="renderKdsOrders()" class="px-3 py-1.5 rounded-xl bg-brand-card hover:bg-zinc-700 text-xs text-zinc-300 font-bold border border-brand-border">🔄 Refresh</button>
+            <button onclick="clearCompletedKdsOrders()" class="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs text-zinc-400">Clear Finished</button>
+          </div>
+        </div>
+        <div id="kdsGridContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
+      </section>
+    </main>
+
+    <!-- FOOTER WITH STEALTH DECOY TRIGGER -->
+    <footer id="appFooter" class="border-t border-brand-border bg-brand-surface/40 py-4 px-6 mt-auto">
+      <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-zinc-500">
+        <div class="flex items-center gap-2">
+          <span class="font-bold text-zinc-400">TAGPUAN FOOD HUB</span>
+          <span>•</span>
+          <span>Authentic Burger & Siomai POS & Kitchen KDS</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="text-zinc-600">Active Node: Branch-01</span>
+          <!-- STEALTH DECOY TRIGGER (PANIC SWITCH) -->
+          <button id="decoyTriggerBtn" onclick="toggleDecoyMode(true)" class="text-zinc-600 hover:text-zinc-400 font-mono text-[11px] cursor-pointer select-none transition-colors" title="System Build">
+            v1.0.4 •
+          </button>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- STEALTH DECOY MODE (PANIC INVENTORY VIEW)   -->
+  <!-- ========================================== -->
+  <div id="decoyInventoryView" class="hidden min-h-screen bg-[#14171d] text-zinc-300 font-sans p-4 sm:p-8 flex-col justify-between">
+    <div class="max-w-7xl mx-auto w-full space-y-6">
+      
+      <!-- DECOY HEADER -->
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-zinc-800 pb-5 gap-4">
+        <div>
+          <!-- Triple tap target for mobile -->
+          <h1 id="decoyTitle" onclick="handleDecoyTitleTap()" title="Triple-tap or press Esc 3x to return" class="text-lg sm:text-xl font-mono font-black text-zinc-100 tracking-tight cursor-pointer select-none flex items-center gap-2 hover:text-zinc-300">
+            <span>📦 RAW MATERIALS & STOCK INVENTORY AUDIT</span>
+            <span class="px-2 py-0.5 rounded text-[10px] bg-zinc-800 text-zinc-400 border border-zinc-700 font-mono font-normal">COMMISSARY LEDGER</span>
+          </h1>
+          <p class="text-xs text-zinc-500 font-mono mt-0.5">Central Warehouse Dispatch • Branch Cold Storage & Dry Bin Allocation Sheet Ref: #WH-04</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <span id="decoyTimestamp" class="text-xs font-mono text-zinc-500 bg-zinc-900/80 px-3 py-1.5 rounded-lg border border-zinc-800">Shift Log: 08:30 AM</span>
+          <button onclick="filterDecoyRows('ALL')" class="text-xs px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-mono border border-zinc-700">Refresh Counts</button>
+          <button onclick="alert('Exporting verified stock audit log to CSV...')" class="text-xs px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-mono border border-zinc-700">Export Ledger</button>
+        </div>
+      </div>
+
+      <!-- DECOY SEARCH & FILTER BAR -->
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-3 bg-zinc-900/60 p-3 rounded-2xl border border-zinc-800">
+        <div class="flex items-center gap-2 overflow-x-auto w-full sm:w-auto text-xs font-mono">
+          <button onclick="filterDecoyRows('ALL')" id="decoyBtnALL" class="px-3 py-1 rounded-lg bg-zinc-700 text-white font-bold">ALL COMMODITIES</button>
+          <button onclick="filterDecoyRows('PROTEINS')" id="decoyBtnPROTEINS" class="px-3 py-1 rounded-lg bg-zinc-800/80 text-zinc-400 hover:text-white">MEAT & PROTEINS</button>
+          <button onclick="filterDecoyRows('BAKERY')" id="decoyBtnBAKERY" class="px-3 py-1 rounded-lg bg-zinc-800/80 text-zinc-400 hover:text-white">BAKERY & BUNS</button>
+          <button onclick="filterDecoyRows('DAIRY')" id="decoyBtnDAIRY" class="px-3 py-1 rounded-lg bg-zinc-800/80 text-zinc-400 hover:text-white">DAIRY & SAUCES</button>
+          <button onclick="filterDecoyRows('PACKAGING')" id="decoyBtnPACKAGING" class="px-3 py-1 rounded-lg bg-zinc-800/80 text-zinc-400 hover:text-white">PACKAGING</button>
+        </div>
+        <div class="w-full sm:w-72">
+          <input type="text" id="decoySearchInput" oninput="searchDecoyRows(this.value)" placeholder="Filter SKU code, batch #, material..." class="w-full px-3 py-1.5 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-zinc-300 font-mono placeholder-zinc-600 focus:outline-none focus:border-zinc-600" />
+        </div>
+      </div>
+
+      <!-- INVENTORY TABLE -->
+      <div class="border border-zinc-800 rounded-2xl overflow-hidden bg-zinc-900/30">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left font-mono text-xs">
+            <thead class="bg-zinc-900/90 text-zinc-400 uppercase text-[10px] tracking-wider border-b border-zinc-800">
+              <tr>
+                <th class="p-3.5">SKU Code</th>
+                <th class="p-3.5">Raw Material Description</th>
+                <th class="p-3.5">Category</th>
+                <th class="p-3.5">Unit Spec</th>
+                <th class="p-3.5 text-center">On-Hand Count</th>
+                <th class="p-3.5 text-center">Safety Buffer</th>
+                <th class="p-3.5">Bin Location</th>
+                <th class="p-3.5 text-right">Audit Status</th>
+              </tr>
+            </thead>
+            <tbody id="decoyTableBody" class="divide-y divide-zinc-800/60 text-zinc-300">
+              <!-- Rendered via JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- COMMISSARY AUDIT SUMMARY -->
+      <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 font-mono text-xs text-zinc-400">
+        <div class="p-3.5 rounded-xl bg-zinc-900/50 border border-zinc-800">
+          <span class="text-[10px] uppercase text-zinc-500 block">Total Monitored SKUs</span>
+          <span class="text-base font-bold text-zinc-200">12 Commodities</span>
+        </div>
+        <div class="p-3.5 rounded-xl bg-zinc-900/50 border border-zinc-800">
+          <span class="text-[10px] uppercase text-zinc-500 block">Cold Storage Temp (Freezer A)</span>
+          <span class="text-base font-bold text-emerald-400">-18.4°C (Normal)</span>
+        </div>
+        <div class="p-3.5 rounded-xl bg-zinc-900/50 border border-zinc-800">
+          <span class="text-[10px] uppercase text-zinc-500 block">Chiller B Temp</span>
+          <span class="text-base font-bold text-emerald-400">3.8°C (Normal)</span>
+        </div>
+        <div class="p-3.5 rounded-xl bg-zinc-900/50 border border-zinc-800">
+          <span class="text-[10px] uppercase text-zinc-500 block">Next Commissary Delivery</span>
+          <span class="text-base font-bold text-zinc-200">Tomorrow, 05:00 AM</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- SUBTLE FOOTER WITH RAPID ESCAPE HINT -->
+    <div class="max-w-7xl mx-auto w-full pt-8 text-center text-[10px] font-mono text-zinc-700 select-none">
+      Internal logistics terminal • Read-only commissary replica • Tagpuan Central ERP Dispatch
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- SECURITY PIN MODAL (SUPABASE CONNECTED)   -->
+  <!-- ========================================== -->
+  <div id="pinModal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-brand-surface border border-brand-border w-full max-w-sm rounded-3xl p-6 shadow-2xl space-y-5 animate-pop">
+      <div class="flex items-center justify-between border-b border-brand-border pb-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-zinc-800 text-brand-green flex items-center justify-center font-bold text-lg">🔒</div>
+          <div>
+            <h3 class="text-sm font-extrabold text-white">System Security PIN</h3>
+            <p class="text-[11px] text-zinc-400">Supabase Cloud Verification</p>
+          </div>
+        </div>
+        <button onclick="closePinModal()" class="text-zinc-500 hover:text-white p-1 rounded-lg">✕</button>
+      </div>
+
+      <div class="space-y-3">
+        <div class="p-2.5 rounded-xl bg-brand-bg border border-brand-border text-center space-y-1">
+          <input type="password" id="pinInputDisplay" readonly placeholder="••••" class="w-full bg-transparent text-center font-mono text-2xl tracking-[0.5em] text-brand-green font-black focus:outline-none" />
+        </div>
+        
+        <!-- VERIFICATION STATUS / ERROR MESSAGE -->
+        <p id="pinErrorMessage" class="hidden text-xs text-red-400 text-center font-bold bg-red-950/50 py-2 rounded-xl border border-red-800/50">
+          Access Denied
+        </p>
+        <p id="pinLoadingMessage" class="hidden text-xs text-brand-green text-center font-bold bg-emerald-950/40 py-2 rounded-xl border border-emerald-800/40 flex items-center justify-center gap-2">
+          <span class="animate-spin text-xs">⏳</span> Verifying credentials in Cloud DB...
+        </p>
+
+        <!-- NUMERIC KEYPAD -->
+        <div class="grid grid-cols-3 gap-2 pt-1">
+          <button onclick="appendPin('1')" class="py-3 rounded-2xl bg-brand-card hover:bg-zinc-700 text-white font-mono font-bold text-lg active:scale-95 transition">1</button>
+          <button onclick="appendPin('2')" class="py-3 rounded-2xl bg-brand-card hover:bg-zinc-700 text-white font-mono font-bold text-lg active:scale-95 transition">2</button>
+          <button onclick="appendPin('3')" class="py-3 rounded-2xl bg-brand-card hover:bg-zinc-700 text-white font-mono font-bold text-lg active:scale-95 transition">3</button>
+          <button onclick="appendPin('4')" class="py-3 rounded-2xl bg-brand-card hover:bg-zinc-700 text-white font-mono font-bold text-lg active:scale-95 transition">4</button>
+          <button onclick="appendPin('5')" class="py-3 rounded-2xl bg-brand-card hover:bg-zinc-700 text-white font-mono font-bold text-lg active:scale-95 transition">5</button>
+          <button onclick="appendPin('6')" class="py-3 rounded-2xl bg-brand-card hover:bg-zinc-700 text-white font-mono font-bold text-lg active:scale-95 transition">6</button>
+          <button onclick="appendPin('7')" class="py-3 rounded-2xl bg-brand-card hover:bg-zinc-700 text-white font-mono font-bold text-lg active:scale-95 transition">7</button>
+          <button onclick="appendPin('8')" class="py-3 rounded-2xl bg-brand-card hover:bg-zinc-700 text-white font-mono font-bold text-lg active:scale-95 transition">8</button>
+          <button onclick="appendPin('9')" class="py-3 rounded-2xl bg-brand-card hover:bg-zinc-700 text-white font-mono font-bold text-lg active:scale-95 transition">9</button>
+          <button onclick="clearPin()" class="py-3 rounded-2xl bg-zinc-800 text-zinc-400 font-bold text-xs active:scale-95 transition">CLR</button>
+          <button onclick="appendPin('0')" class="py-3 rounded-2xl bg-brand-card hover:bg-zinc-700 text-white font-mono font-bold text-lg active:scale-95 transition">0</button>
+          <button onclick="submitPin()" class="py-3 rounded-2xl bg-brand-green text-brand-bg font-black text-sm active:scale-95 transition">✓</button>
+        </div>
+
+        <div class="text-[10px] text-zinc-500 text-center space-y-0.5 pt-1">
+          <p class="flex items-center justify-center gap-1.5 text-zinc-400">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            Supabase RBAC: table <span class="font-mono text-zinc-300">system_access</span>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- OWNER DASHBOARD MODAL                      -->
+  <!-- ========================================== -->
+  <div id="ownerDashboardModal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-brand-surface border border-amber-500/40 w-full max-w-3xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh] animate-pop">
+      <div class="p-5 bg-gradient-to-r from-amber-500/20 to-brand-surface border-b border-brand-border flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-2xl bg-amber-400 text-black flex items-center justify-center font-black text-xl">👑</div>
+          <div>
+            <h3 class="text-base font-black text-white">Tagpuan Master Owner Hub</h3>
+            <p class="text-xs text-zinc-400">Manage Menu, Prices, Daily Sales & Supabase Access</p>
+          </div>
+        </div>
+        <button onclick="closeOwnerDashboardModal()" class="text-zinc-400 hover:text-white p-1">✕</button>
+      </div>
+
+      <div class="flex border-b border-brand-border px-5 gap-4 bg-brand-bg/50">
+        <button id="ownerTabReports" onclick="switchOwnerTab('reports')" class="py-3 text-xs font-extrabold text-amber-400 border-b-2 border-amber-400">📊 Sales Reports</button>
+        <button id="ownerTabMenu" onclick="switchOwnerTab('menu')" class="py-3 text-xs font-bold text-zinc-400 hover:text-white">🍔 Menu Catalog</button>
+        <button id="ownerTabSecurity" onclick="switchOwnerTab('security')" class="py-3 text-xs font-bold text-zinc-400 hover:text-white">🔑 Security & Cloud DB</button>
+      </div>
+
+      <div class="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
+        <!-- TAB 1: REPORTS -->
+        <div id="ownerSectionReports" class="space-y-5">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="p-4 rounded-2xl bg-brand-card border border-brand-border">
+              <span class="text-zinc-400 text-[11px] font-bold block">Gross Sales</span>
+              <span id="ownerStatRevenue" class="text-2xl font-mono font-black text-brand-green">₱0.00</span>
+            </div>
+            <div class="p-4 rounded-2xl bg-brand-card border border-brand-border">
+              <span class="text-zinc-400 text-[11px] font-bold block">Total Orders</span>
+              <span id="ownerStatOrderCount" class="text-2xl font-mono font-black text-white">0</span>
+            </div>
+            <div class="p-4 rounded-2xl bg-brand-card border border-brand-border">
+              <span class="text-zinc-400 text-[11px] font-bold block">Average Order</span>
+              <span id="ownerStatAov" class="text-2xl font-mono font-black text-amber-400">₱0.00</span>
+            </div>
+          </div>
+          <div class="p-4 rounded-2xl bg-brand-card border border-brand-border flex flex-wrap items-center justify-between gap-3 font-mono">
+            <span class="font-bold text-white font-sans">Payment Breakdown:</span>
+            <span>Cash: <strong id="ownerStatCash" class="text-emerald-400">₱0.00</strong></span>
+            <span>GCash: <strong id="ownerStatGcash" class="text-blue-400">₱0.00</strong></span>
+            <span>Maya: <strong id="ownerStatMaya" class="text-purple-400">₱0.00</strong></span>
+          </div>
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <h4 class="font-extrabold text-white text-[11px]">Product Breakdown</h4>
+              <button onclick="exportSalesToCsv()" class="font-bold text-brand-green hover:underline">Download CSV</button>
+            </div>
+            <div class="border border-brand-border rounded-xl overflow-hidden bg-brand-surface">
+              <table class="w-full text-left">
+                <thead class="bg-brand-bg text-zinc-400 font-mono text-[10px] uppercase border-b border-brand-border">
+                  <tr><th class="p-2.5">Item</th><th class="p-2.5 text-center">Qty Sold</th><th class="p-2.5 text-right">Total (₱)</th></tr>
+                </thead>
+                <tbody id="ownerSalesBreakdownTbody" class="divide-y divide-brand-border/40 font-mono text-zinc-300"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: MENU CATALOG -->
+        <div id="ownerSectionMenu" class="hidden space-y-4">
+          <div class="flex items-center justify-between">
+            <p class="text-zinc-400">Update prices and items directly in catalog.</p>
+            <button onclick="openAddNewItemModal()" class="px-3.5 py-2 rounded-xl bg-brand-green text-brand-bg font-extrabold text-xs">+ Add New Item</button>
+          </div>
+          <div class="border border-brand-border rounded-xl overflow-hidden bg-brand-surface">
+            <table class="w-full text-left">
+              <thead class="bg-brand-bg text-zinc-400 font-mono text-[10px] uppercase border-b border-brand-border">
+                <tr><th class="p-2.5">Item</th><th class="p-2.5">Category</th><th class="p-2.5 text-right">Price</th><th class="p-2.5 text-right">Action</th></tr>
+              </thead>
+              <tbody id="ownerMenuCatalogTbody" class="divide-y divide-brand-border/40"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- TAB 3: SECURITY & SUPABASE CONFIG -->
+        <div id="ownerSectionSecurity" class="hidden space-y-5">
+          <!-- SUPABASE LIVE STATUS -->
+          <div class="p-4 rounded-2xl bg-brand-card border border-brand-border space-y-3">
+            <div class="flex items-center justify-between">
+              <h5 class="font-bold text-white flex items-center gap-2">
+                <span>⚡ Supabase Database Connection</span>
+                <span id="supabaseStatusBadge" class="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/20 text-emerald-400 font-bold">CONNECTED</span>
+              </h5>
+              <span class="text-[11px] text-zinc-400 font-mono">Table: system_access</span>
+            </div>
+            <div class="space-y-2 text-[11px]">
+              <div>
+                <label class="block text-zinc-400 font-bold mb-1">Supabase Project URL:</label>
+                <input type="text" id="supabaseUrlInput" placeholder="https://your-project.supabase.co" class="w-full px-3 py-1.5 rounded-xl bg-brand-bg border border-brand-border font-mono text-zinc-200" />
+              </div>
+              <div>
+                <label class="block text-zinc-400 font-bold mb-1">Supabase Anon Key:</label>
+                <input type="password" id="supabaseKeyInput" placeholder="eyJhbGciOi..." class="w-full px-3 py-1.5 rounded-xl bg-brand-bg border border-brand-border font-mono text-zinc-200" />
+              </div>
+              <div class="pt-1 flex justify-end">
+                <button onclick="saveSupabaseSettings()" class="px-3.5 py-1.5 rounded-xl bg-zinc-700 hover:bg-zinc-600 text-white font-bold text-xs">Save Credentials</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- UPDATE PINS IN SUPABASE -->
+          <div class="p-4 rounded-2xl bg-brand-card border border-brand-border space-y-3">
+            <h5 class="font-bold text-white">Update Staff / Cashier PIN in Supabase</h5>
+            <p class="text-[11px] text-zinc-400">Updates <code class="font-mono text-brand-green">system_access</code> where <code class="font-mono text-zinc-300">role = 'STAFF'</code>.</p>
+            <div class="flex items-center gap-3">
+              <input type="password" id="newStaffPinInput" maxlength="6" placeholder="New 4-6 digit PIN" class="px-3.5 py-2 rounded-xl bg-brand-bg border border-brand-border text-white font-mono text-sm tracking-widest w-48" />
+              <button onclick="saveStaffPinToSupabase()" class="px-4 py-2 rounded-xl bg-zinc-700 hover:bg-zinc-600 text-white font-bold text-xs">Sync Staff PIN</button>
+            </div>
+          </div>
+
+          <div class="p-4 rounded-2xl bg-brand-card border border-amber-500/30 space-y-3">
+            <h5 class="font-bold text-amber-300">Update Master Owner PIN in Supabase</h5>
+            <p class="text-[11px] text-zinc-400">Updates <code class="font-mono text-amber-400">system_access</code> where <code class="font-mono text-zinc-300">role = 'OWNER'</code>.</p>
+            <div class="flex items-center gap-3">
+              <input type="password" id="newOwnerPinInput" maxlength="6" placeholder="New 4-6 digit PIN" class="px-3.5 py-2 rounded-xl bg-brand-bg border border-brand-border text-white font-mono text-sm tracking-widest w-48" />
+              <button onclick="saveOwnerPinToSupabase()" class="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs">Sync Master PIN</button>
+            </div>
+          </div>
+
+          <div class="pt-4 border-t border-brand-border flex items-center justify-between">
+            <span class="text-zinc-400">Restore Default Food Catalog</span>
+            <button onclick="resetMenuToDefaults()" class="px-3.5 py-1.5 rounded-xl bg-red-950/40 text-red-400 hover:bg-red-900 border border-red-800/40 font-bold text-xs">Reset Menu</button>
+          </div>
+        </div>
+      </div>
+      <div class="p-4 border-t border-brand-border bg-brand-bg/60 flex justify-end">
+        <button onclick="closeOwnerDashboardModal()" class="px-5 py-2 rounded-xl bg-brand-card text-white hover:bg-zinc-700 font-bold text-xs">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- EDIT / ADD FOOD MODAL -->
+  <div id="editItemModal" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-brand-surface border border-brand-border w-full max-w-md rounded-3xl p-6 shadow-2xl space-y-4 animate-pop">
+      <div class="flex items-center justify-between border-b border-brand-border pb-3">
+        <h3 id="editItemModalTitle" class="text-sm font-extrabold text-white">Edit Food Item</h3>
+        <button onclick="closeEditItemModal()" class="text-zinc-400 hover:text-white">✕</button>
+      </div>
+      <form id="editItemForm" onsubmit="handleSaveItem(event)" class="space-y-3 text-xs">
+        <input type="hidden" id="editItemId" />
+        <div>
+          <label class="font-bold text-zinc-300 block mb-1">Item Title:</label>
+          <input type="text" id="editItemName" required class="w-full px-3 py-2 rounded-xl bg-brand-bg border border-brand-border text-white focus:border-brand-green" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="font-bold text-zinc-300 block mb-1">Price (₱):</label>
+            <input type="number" id="editItemPrice" min="1" step="0.5" required class="w-full px-3 py-2 rounded-xl bg-brand-bg border border-brand-border text-brand-green font-mono font-bold" />
+          </div>
+          <div>
+            <label class="font-bold text-zinc-300 block mb-1">Category:</label>
+            <select id="editItemCategory" class="w-full px-3 py-2 rounded-xl bg-brand-bg border border-brand-border text-white">
+              <option value="BURGERS">BURGERS</option>
+              <option value="DOUBLE CHEESE FRIES">DOUBLE CHEESE FRIES</option>
+              <option value="FAVORITE">FAVORITE</option>
+              <option value="CLASSIC">CLASSIC</option>
+              <option value="SPECIALTY">SPECIALTY</option>
+              <option value="DRINKS">DRINKS</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="font-bold text-zinc-300 block mb-1">Badge (e.g. BUY 1 TAKE 1):</label>
+          <input type="text" id="editItemBadge" class="w-full px-3 py-2 rounded-xl bg-brand-bg border border-brand-border text-white" />
+        </div>
+        <div>
+          <label class="font-bold text-zinc-300 block mb-1">Description:</label>
+          <textarea id="editItemDesc" rows="2" class="w-full px-3 py-2 rounded-xl bg-brand-bg border border-brand-border text-zinc-300"></textarea>
+        </div>
+        <div class="space-y-1.5">
+          <label class="font-bold text-zinc-300 block">Photo:</label>
+          <input type="file" id="editItemImageFile" accept="image/*" onchange="handleImageFileUpload(event)" class="text-[11px] text-zinc-400 file:mr-2 file:py-1 file:px-2.5 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-brand-card file:text-brand-green" />
+          <input type="text" id="editItemImageUrl" placeholder="Or paste image URL" class="w-full px-3 py-1.5 rounded-xl bg-brand-bg border border-brand-border text-[11px] font-mono text-zinc-300" />
+          <div class="w-full h-24 rounded-xl overflow-hidden bg-brand-bg border border-brand-border flex items-center justify-center">
+            <img id="editItemPreviewImg" src="" alt="Preview" class="w-full h-full object-cover hidden" />
+            <span id="editItemPreviewPlaceholder" class="text-zinc-600 text-xs">Image Preview</span>
+          </div>
+        </div>
+        <div class="pt-2 flex justify-end gap-2">
+          <button type="button" onclick="closeEditItemModal()" class="px-4 py-2 rounded-xl bg-zinc-800 text-zinc-300 font-bold">Cancel</button>
+          <button type="submit" class="px-5 py-2 rounded-xl bg-brand-green text-brand-bg font-black">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- CART DRAWER -->
+  <div id="cartDrawer" class="hidden fixed inset-0 z-50 bg-black/75 flex justify-end">
+    <div class="bg-brand-surface w-full max-w-md h-full border-l border-brand-border p-6 flex flex-col justify-between shadow-2xl animate-pop">
+      <div class="flex items-center justify-between border-b border-brand-border pb-4">
+        <h3 class="text-base font-extrabold text-white">🛒 Your Food Basket</h3>
+        <button onclick="closeCartDrawer()" class="text-zinc-400 hover:text-white p-1">✕</button>
+      </div>
+      <div id="customerCartItems" class="flex-1 overflow-y-auto py-4 space-y-3 pr-1"></div>
+      <div class="border-t border-brand-border pt-4 space-y-3">
+        <div class="flex justify-between items-baseline">
+          <span class="text-xs text-zinc-400">Total:</span>
+          <span id="customerCartTotal" class="text-2xl font-mono font-black text-brand-green">₱0.00</span>
+        </div>
+        <button onclick="openCustomerCheckoutModal()" class="w-full py-3.5 rounded-2xl bg-brand-green hover:bg-[#b8e2af] text-brand-bg font-black text-sm transition shadow-lg">
+          Proceed to Order →
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CHECKOUT MODAL -->
+  <div id="customerCheckoutModal" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+    <div class="bg-brand-surface border border-brand-border w-full max-w-sm rounded-3xl p-6 shadow-2xl space-y-4 animate-pop">
+      <div class="flex items-center justify-between border-b border-brand-border pb-3">
+        <h3 class="text-sm font-extrabold text-white">Confirm Order & Payment</h3>
+        <button onclick="closeCustomerCheckoutModal()" class="text-zinc-400 hover:text-white">✕</button>
+      </div>
+      <div class="space-y-3 text-xs">
+        <div>
+          <label class="font-bold text-zinc-300 block mb-1">Dining Option:</label>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="custDiningDineIn" onclick="setCustDining('DINE_IN')" class="py-2 rounded-xl bg-brand-card text-brand-green border border-brand-border font-bold">Dine In</button>
+            <button id="custDiningTakeOut" onclick="setCustDining('TAKE_OUT')" class="py-2 rounded-xl bg-brand-bg text-zinc-400 font-bold">Take Out</button>
+          </div>
+        </div>
+        <div>
+          <label class="font-bold text-zinc-300 block mb-1">Payment Method:</label>
+          <div class="grid grid-cols-3 gap-2">
+            <button id="custPayCash" onclick="setCustPayment('CASH')" class="py-2 rounded-xl bg-brand-green text-black font-black">Cash</button>
+            <button id="custPayGcash" onclick="setCustPayment('GCASH')" class="py-2 rounded-xl bg-brand-bg text-zinc-400 font-bold">GCash</button>
+            <button id="custPayMaya" onclick="setCustPayment('MAYA')" class="py-2 rounded-xl bg-brand-bg text-zinc-400 font-bold">Maya</button>
+          </div>
+        </div>
+        <div class="p-3 rounded-xl bg-brand-bg border border-brand-border space-y-1">
+          <div class="flex justify-between text-zinc-400">
+            <span>Total Payable:</span>
+            <span id="custModalTotal" class="font-mono text-brand-green font-bold text-base">₱0.00</span>
+          </div>
+          <p class="text-[10px] text-zinc-500">Pay at cashier counter or via scan upon claim.</p>
+        </div>
+        <button onclick="submitCustomerOrder()" class="w-full py-3 rounded-2xl bg-brand-green hover:bg-[#b8e2af] text-brand-bg font-black text-sm transition shadow-lg">
+          Submit & Get Order Number
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PRINTABLE RECEIPT MODAL -->
+  <div id="receiptModal" class="hidden fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+    <div class="bg-brand-surface border border-brand-border w-full max-w-xs rounded-3xl p-5 shadow-2xl space-y-3 animate-pop">
+      <div id="printableReceipt" class="bg-white text-black p-4 rounded-xl font-mono text-xs space-y-2">
+        <div class="text-center border-b border-dashed border-zinc-400 pb-2">
+          <h2 class="font-black text-sm">TAGPUAN FOOD HUB</h2>
+          <p class="text-[10px] text-zinc-600">Authentic Burger & Siomai</p>
+          <p id="receiptOrderNumber" class="text-base font-black pt-1">#ORD-000</p>
+          <p id="receiptDiningOption" class="text-[10px] font-bold uppercase text-zinc-700">Dine In</p>
+        </div>
+        <div id="receiptItemsList" class="space-y-1 border-b border-dashed border-zinc-400 pb-2"></div>
+        <div class="flex justify-between text-sm font-black pt-1">
+          <span>TOTAL:</span>
+          <span id="receiptTotalAmount">₱0.00</span>
+        </div>
+      </div>
+      <div class="flex gap-2 pt-2">
+        <button onclick="window.print()" class="flex-1 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs">🖨️ Print Slip</button>
+        <button onclick="closeReceiptModal()" class="flex-1 py-2.5 rounded-xl bg-brand-green text-brand-bg font-black text-xs hover:bg-[#b8e2af]">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- COMPLETE APPLICATION LOGIC (SUPABASE RBAC) -->
+  <!-- ========================================== -->
+  <script>
+    // ==========================================
+    // 1. SUPABASE CREDENTIALS & INITIALIZATION
+    // ==========================================
+    // Provide fallback/placeholders for production connectivity
+    const DEFAULT_SUPABASE_URL = 'https://xyzcompany.supabase.co';
+    const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh5emNvbXBhbnkiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTcwMDAwMDAwMCwiZXhwIjoxOTAwMDAwMDAwfQ.placeholder';
+
+    let SUPABASE_URL = localStorage.getItem('tagpuan_supabase_url') || window.TAGPUAN_SUPABASE_URL || DEFAULT_SUPABASE_URL;
+    let SUPABASE_ANON_KEY = localStorage.getItem('tagpuan_supabase_anon_key') || window.TAGPUAN_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
+
+    let supabase = null;
+    function initSupabaseClient() {
+      try {
+        if (window.supabase && typeof window.supabase.createClient === 'function') {
+          supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+          console.log('[Supabase] Initialized client for:', SUPABASE_URL);
+        } else {
+          console.warn('[Supabase] SDK not detected on window.');
+        }
+      } catch (err) {
+        console.warn('[Supabase Client Init Error]:', err);
+      }
+    }
+    initSupabaseClient();
+
+    // ==========================================
+    // 2. STORAGE KEYS & LOCAL CACHE
+    // ==========================================
+    const STORAGE_KEYS = {
+      MENU: 'tagpuan_menu_items',
+      ORDERS: 'tagpuan_sales_orders',
+      STAFF_PIN_CACHE: 'tagpuan_staff_pin_cache',
+      OWNER_PIN_CACHE: 'tagpuan_owner_pin_cache'
+    };
+
+    // 3. REAL-TIME BROADCAST CHANNEL & CROSS-TAB SYNC
+    const orderChannel = new BroadcastChannel('tagpuan_live_sync');
+
+    orderChannel.onmessage = (event) => {
+      const data = event.data;
+      if (!data) return;
+
+      if (data.type === 'NEW_ORDER') {
+        salesOrders = getSavedOrders();
+        updateKdsBadge();
+        playOrderAlertBeep();
+        if (currentView === 'kds') renderKdsOrders();
+        showToast(`🔔 Bagong Order: ${data.order.orderNumber}`);
+      } else if (data.type === 'STATUS_UPDATE') {
+        salesOrders = getSavedOrders();
+        updateKdsBadge();
+        if (currentView === 'kds') renderKdsOrders();
+      }
+    };
+
+    window.addEventListener('storage', (e) => {
+      if (e.key === STORAGE_KEYS.ORDERS) {
+        salesOrders = getSavedOrders();
+        updateKdsBadge();
+        if (currentView === 'kds') renderKdsOrders();
+      }
+    });
+
+    function playOrderAlertBeep() {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.6);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.6);
+      } catch (e) {
+        console.log("Autoplay policy prevented audio chime.");
+      }
+    }
+
+    function getSavedOrders() {
+      try {
+        return JSON.parse(localStorage.getItem(STORAGE_KEYS.ORDERS)) || [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    // ==========================================
+    // 4. MENU ITEMS & COMMODITIES DATA
+    // ==========================================
+    const DEFAULT_MENU_ITEMS = [
+      { id: 'BUR-01', name: 'Plain Burger', category: 'BURGERS', price: 16.00, badge: 'CLASSIC', description: 'Tagpuan signature beef patty with special dressing.', image: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500' },
+      { id: 'BUR-03', name: 'Cheese Burger', category: 'BURGERS', price: 21.00, badge: 'BESTSELLER', description: 'Grilled patty topped with rich melted cheese.', image: 'https://images.unsplash.com/photo-1586190848861-99aa4a171e90?w=500' },
+      { id: 'BUR-05', name: 'Buy 1 Take 1 Cheese Burger w/ Drinks', category: 'BURGERS', price: 50.00, badge: 'BUY 1 TAKE 1', description: 'Two loaded cheeseburgers plus cold beverage.', image: 'https://images.unsplash.com/photo-1572802419224-296b0aeee0d9?w=500' },
+      { id: 'BUR-08', name: 'Buy 1 Take 1 Classic Hotdog Sandwich', category: 'BURGERS', price: 59.00, badge: 'HOTDOG COMBO', description: 'Two juicy hotdogs with dressing and drink.', image: 'https://images.unsplash.com/photo-1619740455993-9e612b1af08a?w=500' },
+      { id: 'FAV-01', name: 'Siomai Rice with Egg', category: 'FAVORITE', price: 45.00, badge: 'BESTSELLER', description: 'Steamed pork siomai, fried egg, garlic rice & chili dip.', image: 'https://images.unsplash.com/photo-1496116218417-1a781b1c416c?w=500' },
+      { id: 'CLS-01', name: 'Tapsilog', category: 'CLASSIC', price: 75.00, badge: 'PINOY CLASSIC', description: 'Marinated beef tapa, garlic rice, and egg.', image: 'https://images.unsplash.com/photo-1603894584373-5ac82b2ae398?w=500' }
+    ];
+
+    // RAW MATERIALS FOR DECOY MODE (COMMISSARY STOCK SHEET)
+    const DECOY_STOCK_ITEMS = [
+      { sku: 'RAW-BP-40G', name: 'Beef Patty (Regular 40g, Blast-Frozen)', category: 'PROTEINS', unit: 'Patties', stock: 164, min: 50, location: 'Walk-In Freezer A-1', status: 'IN STOCK' },
+      { sku: 'RAW-BUN-SES', name: 'Burger Buns (Sesame Crown, 3.5" Dia)', category: 'BAKERY', unit: 'Packs (6s)', stock: 32, min: 12, location: 'Dry Rack B-2', status: 'IN STOCK' },
+      { sku: 'RAW-CHS-SLI', name: 'Cheddar Cheese Slices (Fast-Melting)', category: 'DAIRY', unit: 'Packs (24s)', stock: 8, min: 3, location: 'Chiller C-1', status: 'IN STOCK' },
+      { sku: 'RAW-SM-50S', name: 'Pork & Shrimp Siomai (50pcs/Baler)', category: 'PROTEINS', unit: 'Baler Packs', stock: 14, min: 6, location: 'Walk-In Freezer A-2', status: 'IN STOCK' },
+      { sku: 'RAW-CHL-500', name: 'Chili Garlic Infusion Oil (500ml Jar)', category: 'DAIRY', unit: 'Jars', stock: 6, min: 2, location: 'Shelf D-1', status: 'IN STOCK' },
+      { sku: 'RAW-RCE-50K', name: 'Sinandomeng White Rice (Grade A)', category: 'PROTEINS', unit: 'Sacks (50kg)', stock: 3, min: 1, location: 'Dry Store Bin 1', status: 'IN STOCK' },
+      { sku: 'RAW-EGG-MED', name: 'Fresh Farm Chicken Eggs (Medium)', category: 'DAIRY', unit: 'Trays (30s)', stock: 4, min: 2, location: 'Chiller C-2', status: 'ADEQUATE' },
+      { sku: 'RAW-HOT-JMB', name: 'Cheesy Jumbo Hotdog Links (10s)', category: 'PROTEINS', unit: 'Packs (10s)', stock: 9, min: 4, location: 'Walk-In Freezer A-1', status: 'IN STOCK' },
+      { sku: 'RAW-MAYO-GL', name: 'Tagpuan Signature Burger Dressing', category: 'DAIRY', unit: 'Gallons (3.8L)', stock: 2, min: 1, location: 'Chiller C-1', status: 'IN STOCK' },
+      { sku: 'PKG-WRP-BUR', name: 'Greaseproof Burger Wrappers (Food Grade)', category: 'PACKAGING', unit: 'Packs (500s)', stock: 5, min: 2, location: 'Rack E-3', status: 'IN STOCK' },
+      { sku: 'PKG-BAG-004', name: 'Kraft Takeout Paper Bags (#4 Medium)', category: 'PACKAGING', unit: 'Bundles (100s)', stock: 7, min: 3, location: 'Rack E-1', status: 'IN STOCK' },
+      { sku: 'PKG-SPK-WOD', name: 'Biodegradable Wooden Food Sporks', category: 'PACKAGING', unit: 'Packs (50s)', stock: 11, min: 5, location: 'Rack E-2', status: 'IN STOCK' }
+    ];
+
+    let currentRole = 'CUSTOMER';
+    let currentView = 'menu';
+    let activeCategory = 'ALL';
+    let searchQuery = '';
+
+    let menuItems = [];
+    let salesOrders = [];
+    let cart = [];
+    let posCart = [];
+
+    let posDining = 'DINE_IN';
+    let posPayment = 'CASH';
+    let custDining = 'DINE_IN';
+    let custPayment = 'CASH';
+
+    let pinBuffer = '';
+    let logoClickCount = 0;
+    let logoClickTimer = null;
+    let isVerifyingPin = false;
+
+    // STEALTH DECOY STATE
+    let isDecoyActive = false;
+    let escPressCount = 0;
+    let escPressTimer = null;
+    let decoyTitleTapCount = 0;
+    let decoyTitleTapTimer = null;
+
+    // ==========================================
+    // 5. SYSTEM INITIALIZATION
+    // ==========================================
+    function initSystem() {
+      const savedMenu = localStorage.getItem(STORAGE_KEYS.MENU);
+      menuItems = savedMenu ? JSON.parse(savedMenu) : [...DEFAULT_MENU_ITEMS];
+      if (!savedMenu) saveMenuToStorage();
+
+      salesOrders = getSavedOrders();
+
+      setupSecretTripleClick();
+      setupDecoyEscapeKey();
+      renderCategoryTabs();
+      renderMenu();
+      renderPosCategoryTabs();
+      renderPosGrid();
+      updateCartSummary();
+      updateKdsBadge();
+      renderDecoyTable(DECOY_STOCK_ITEMS);
+
+      // Populate Supabase inputs
+      const urlInput = document.getElementById('supabaseUrlInput');
+      const keyInput = document.getElementById('supabaseKeyInput');
+      if (urlInput) urlInput.value = SUPABASE_URL;
+      if (keyInput) keyInput.value = SUPABASE_ANON_KEY;
+
+      if (window.location.hash === '#kds') {
+        grantRole('STAFF');
+        switchMainView('kds');
+      } else if (window.location.hash === '#pos') {
+        grantRole('STAFF');
+        switchMainView('pos');
+      }
+    }
+
+    function saveMenuToStorage() { localStorage.setItem(STORAGE_KEYS.MENU, JSON.stringify(menuItems)); }
+    function saveOrdersToStorage() { localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(salesOrders)); }
+
+    // ==========================================
+    // 6. SECRET ACCESS ENTRY POINTS
+    // ==========================================
+    function setupSecretTripleClick() {
+      const registerClick = () => {
+        logoClickCount++;
+        if (logoClickCount === 1) {
+          logoClickTimer = setTimeout(() => { logoClickCount = 0; }, 800);
+        } else if (logoClickCount >= 3) {
+          clearTimeout(logoClickTimer);
+          logoClickCount = 0;
+          openPinModal();
+        }
+      };
+      document.getElementById('brandLogoBtn').addEventListener('click', registerClick);
+      document.getElementById('brandTitleText').addEventListener('click', registerClick);
+    }
+
+    function openPinModal() {
+      pinBuffer = '';
+      isVerifyingPin = false;
+      document.getElementById('pinInputDisplay').value = '';
+      document.getElementById('pinErrorMessage').classList.add('hidden');
+      document.getElementById('pinLoadingMessage').classList.add('hidden');
+      document.getElementById('pinModal').classList.remove('hidden');
+    }
+
+    function closePinModal() {
+      document.getElementById('pinModal').classList.add('hidden');
+      pinBuffer = '';
+      isVerifyingPin = false;
+    }
+
+    function appendPin(num) {
+      if (isVerifyingPin) return;
+      if (pinBuffer.length < 6) {
+        pinBuffer += num;
+        document.getElementById('pinInputDisplay').value = '•'.repeat(pinBuffer.length);
+      }
+      if (pinBuffer.length >= 4) {
+        submitPin();
+      }
+    }
+
+    function clearPin() {
+      if (isVerifyingPin) return;
+      pinBuffer = '';
+      document.getElementById('pinInputDisplay').value = '';
+      document.getElementById('pinErrorMessage').classList.add('hidden');
+      document.getElementById('pinLoadingMessage').classList.add('hidden');
+    }
+
+    // ==========================================
+    // 7. SUPABASE AUTHENTICATION (NO TRIAL 9999)
+    // ==========================================
+    async function submitPin() {
+      const enteredPin = pinBuffer.trim();
+      if (!enteredPin || isVerifyingPin) return;
+
+      const errorEl = document.getElementById('pinErrorMessage');
+      const loadingEl = document.getElementById('pinLoadingMessage');
+      const displayEl = document.getElementById('pinInputDisplay');
+
+      errorEl.classList.add('hidden');
+      loadingEl.classList.remove('hidden');
+      isVerifyingPin = true;
+
+      try {
+        if (!supabase) {
+          initSupabaseClient();
+        }
+
+        if (!supabase) {
+          throw new Error('Supabase client connection not configured.');
+        }
+
+        // QUERY SUPABASE TABLE 'system_access' (columns: id, role, pin)
+        const { data, error } = await supabase
+          .from('system_access')
+          .select('role')
+          .eq('pin', enteredPin)
+          .maybeSingle();
+
+        if (error) {
+          console.error('[Supabase Query Error]:', error);
+          throw error;
+        }
+
+        if (data && data.role === 'OWNER') {
+          closePinModal();
+          grantRole('OWNER');
+          showToast('👑 Master Owner Access Verified via Supabase');
+          return;
+        } else if (data && data.role === 'STAFF') {
+          closePinModal();
+          grantRole('STAFF');
+          showToast('👔 Staff POS & KDS Verified via Supabase');
+          return;
+        } else {
+          // Explicit requirement: if invalid or trial PIN (e.g. 9999 not in DB), show "Access Denied"
+          showAccessDenied();
+        }
+      } catch (err) {
+        console.warn('[Supabase Auth Failed]:', err);
+        showAccessDenied();
+      } finally {
+        isVerifyingPin = false;
+        loadingEl.classList.add('hidden');
+      }
+    }
+
+    function showAccessDenied() {
+      const errorEl = document.getElementById('pinErrorMessage');
+      errorEl.textContent = 'Access Denied';
+      errorEl.classList.remove('hidden');
+      pinBuffer = '';
+      document.getElementById('pinInputDisplay').value = '';
+    }
+
+    function grantRole(role) {
+      currentRole = role;
+      document.getElementById('navPosBtn').classList.remove('hidden');
+      document.getElementById('navKdsBtn').classList.remove('hidden');
+      document.getElementById('lockSystemBtn').classList.remove('hidden');
+
+      if (role === 'OWNER') {
+        document.getElementById('systemModeBadge').textContent = '👑 Master Owner';
+        document.getElementById('ownerDashboardBtn').classList.remove('hidden');
+        document.getElementById('ownerActiveBanner').classList.remove('hidden');
+        showToast('Master Owner Hub Unlocked');
+      } else {
+        document.getElementById('systemModeBadge').textContent = '👔 Staff / Cashier';
+        document.getElementById('ownerDashboardBtn').classList.add('hidden');
+        document.getElementById('ownerActiveBanner').classList.add('hidden');
+        showToast('Cashier POS & KDS Unlocked');
+      }
+      renderMenu();
+    }
+
+    function lockBackToCustomerMode() {
+      currentRole = 'CUSTOMER';
+      document.getElementById('systemModeBadge').textContent = 'Customer Kiosk';
+      document.getElementById('navPosBtn').classList.add('hidden');
+      document.getElementById('navKdsBtn').classList.add('hidden');
+      document.getElementById('lockSystemBtn').classList.add('hidden');
+      document.getElementById('ownerDashboardBtn').classList.add('hidden');
+      document.getElementById('ownerActiveBanner').classList.add('hidden');
+      switchMainView('menu');
+      renderMenu();
+      showToast('Locked to Customer Kiosk.');
+    }
+
+    function switchMainView(view) {
+      currentView = view;
+      document.getElementById('menuView').classList.add('hidden');
+      document.getElementById('posView').classList.add('hidden');
+      document.getElementById('kdsView').classList.add('hidden');
+
+      if (view === 'menu') {
+        document.getElementById('menuView').classList.remove('hidden');
+      } else if (view === 'pos') {
+        document.getElementById('posView').classList.remove('hidden');
+        renderPosGrid();
+        renderPosTicket();
+      } else if (view === 'kds') {
+        document.getElementById('kdsView').classList.remove('hidden');
+        renderKdsOrders();
+      }
+    }
+
+    // ==========================================
+    // 8. STEALTH DECOY MODE (PANIC SWITCH)
+    // ==========================================
+    function toggleDecoyMode(enable) {
+      isDecoyActive = enable;
+      const appWrapper = document.getElementById('mainAppWrapper');
+      const decoyView = document.getElementById('decoyInventoryView');
+
+      if (enable) {
+        // Hide all POS, Kiosk, cart and sales elements
+        appWrapper.classList.add('hidden');
+        closePinModal();
+        closeOwnerDashboardModal();
+        closeCartDrawer();
+        closeCustomerCheckoutModal();
+        closeReceiptModal();
+        decoyView.classList.remove('hidden');
+        decoyView.classList.add('flex');
+        updateDecoyClock();
+      } else {
+        decoyView.classList.add('hidden');
+        decoyView.classList.remove('flex');
+        appWrapper.classList.remove('hidden');
+        showToast('Restored operational mode.');
+      }
+    }
+
+    function setupDecoyEscapeKey() {
+      window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && isDecoyActive) {
+          escPressCount++;
+          if (escPressCount === 1) {
+            escPressTimer = setTimeout(() => { escPressCount = 0; }, 1200);
+          } else if (escPressCount >= 3) {
+            clearTimeout(escPressTimer);
+            escPressCount = 0;
+            toggleDecoyMode(false);
+          }
+        }
+      });
+    }
+
+    function handleDecoyTitleTap() {
+      if (!isDecoyActive) return;
+      decoyTitleTapCount++;
+      if (decoyTitleTapCount === 1) {
+        decoyTitleTapTimer = setTimeout(() => { decoyTitleTapCount = 0; }, 1200);
+      } else if (decoyTitleTapCount >= 3) {
+        clearTimeout(decoyTitleTapTimer);
+        decoyTitleTapCount = 0;
+        toggleDecoyMode(false);
+      }
+    }
+
+    function updateDecoyClock() {
+      const stampEl = document.getElementById('decoyTimestamp');
+      if (stampEl) {
+        const now = new Date();
+        stampEl.textContent = `Shift Log: ${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      }
+    }
+
+    function renderDecoyTable(items) {
+      const tbody = document.getElementById('decoyTableBody');
+      if (!tbody) return;
+      tbody.innerHTML = items.map(item => `
+        <tr class="hover:bg-zinc-800/40 transition-colors">
+          <td class="p-3.5 text-zinc-400 font-bold">${item.sku}</td>
+          <td class="p-3.5 text-white font-medium">${item.name}</td>
+          <td class="p-3.5 text-zinc-400">${item.category}</td>
+          <td class="p-3.5 text-zinc-400">${item.unit}</td>
+          <td class="p-3.5 text-center font-bold text-zinc-100">${item.stock}</td>
+          <td class="p-3.5 text-center text-zinc-500">${item.min}</td>
+          <td class="p-3.5 text-zinc-400">${item.location}</td>
+          <td class="p-3.5 text-right">
+            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${item.stock <= item.min ? 'bg-amber-900/40 text-amber-300 border border-amber-700/50' : 'bg-zinc-800 text-zinc-300'}">
+              ${item.status}
+            </span>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function filterDecoyRows(cat) {
+      const categories = ['ALL', 'PROTEINS', 'BAKERY', 'DAIRY', 'PACKAGING'];
+      categories.forEach(c => {
+        const btn = document.getElementById(`decoyBtn${c}`);
+        if (btn) {
+          if (c === cat) {
+            btn.className = 'px-3 py-1 rounded-lg bg-zinc-700 text-white font-bold';
+          } else {
+            btn.className = 'px-3 py-1 rounded-lg bg-zinc-800/80 text-zinc-400 hover:text-white';
+          }
+        }
+      });
+
+      if (cat === 'ALL') {
+        renderDecoyTable(DECOY_STOCK_ITEMS);
+      } else {
+        renderDecoyTable(DECOY_STOCK_ITEMS.filter(i => i.category === cat));
+      }
+    }
+
+    function searchDecoyRows(query) {
+      const q = query.toLowerCase().trim();
+      if (!q) {
+        renderDecoyTable(DECOY_STOCK_ITEMS);
+        return;
+      }
+      renderDecoyTable(DECOY_STOCK_ITEMS.filter(i => 
+        i.name.toLowerCase().includes(q) || 
+        i.sku.toLowerCase().includes(q) || 
+        i.location.toLowerCase().includes(q)
+      ));
+    }
+
+    // ==========================================
+    // 9. MENU & SEARCH RENDERING
+    // ==========================================
+    const CATEGORIES = ['ALL', 'BURGERS', 'DOUBLE CHEESE FRIES', 'FAVORITE', 'CLASSIC', 'SPECIALTY', 'DRINKS'];
+
+    function renderCategoryTabs() {
+      const container = document.getElementById('categoryTabsContainer');
+      container.innerHTML = CATEGORIES.map(cat => `
+        <button onclick="setCategory('${cat}')" class="px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${activeCategory === cat ? 'bg-brand-green text-brand-bg font-extrabold shadow' : 'bg-brand-surface text-zinc-400 hover:text-white border border-brand-border'}">
+          ${cat}
+        </button>
+      `).join('');
+    }
+
+    function setCategory(cat) {
+      activeCategory = cat;
+      renderCategoryTabs();
+      renderMenu();
+    }
+
+    function handleSearchChange(val) {
+      searchQuery = val.toLowerCase().trim();
+      renderMenu();
+    }
+
+    function renderMenu() {
+      const grid = document.getElementById('foodGridContainer');
+      let filtered = menuItems;
+
+      if (activeCategory !== 'ALL') {
+        filtered = filtered.filter(i => i.category === activeCategory);
+      }
+      if (searchQuery) {
+        filtered = filtered.filter(i => i.name.toLowerCase().includes(searchQuery) || (i.description && i.description.toLowerCase().includes(searchQuery)));
+      }
+
+      if (filtered.length === 0) {
+        grid.innerHTML = `<div class="col-span-full py-16 text-center text-zinc-500 text-xs">No food items found matching your filter.</div>`;
+        return;
+      }
+
+      grid.innerHTML = filtered.map(item => `
+        <div class="bg-brand-surface border border-brand-border rounded-3xl overflow-hidden flex flex-col justify-between hover:border-brand-green/40 transition group shadow-lg relative">
+          <div>
+            <div class="relative w-full h-44 bg-brand-card overflow-hidden">
+              <img src="${item.image}" alt="${item.name}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" onerror="this.src='https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500'" />
+              ${item.badge ? `
+                <span class="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-black tracking-wider uppercase bg-brand-green text-brand-bg shadow">
+                  ${item.badge}
+                </span>
+              ` : ''}
+              ${currentRole === 'OWNER' ? `
+                <button onclick="openEditItemModal('${item.id}')" class="absolute top-3 right-3 px-2.5 py-1 rounded-xl bg-black/80 hover:bg-black text-amber-400 text-xs font-bold border border-amber-400/40 shadow">
+                  ✏️ Edit
+                </button>
+              ` : ''}
+            </div>
+            <div class="p-4 space-y-1.5">
+              <div class="flex items-start justify-between gap-2">
+                <h3 class="font-extrabold text-sm text-white tracking-tight leading-snug">${item.name}</h3>
+                <span class="font-mono text-base font-black text-brand-green whitespace-nowrap">₱${item.price.toFixed(2)}</span>
+              </div>
+              <p class="text-[11px] text-zinc-400 line-clamp-2">${item.description || 'Freshly made to order.'}</p>
+            </div>
+          </div>
+          <div class="p-4 pt-0">
+            <button onclick="addToCart('${item.id}')" class="w-full py-2.5 rounded-2xl bg-brand-card hover:bg-brand-green hover:text-brand-bg border border-brand-border text-white text-xs font-extrabold transition flex items-center justify-center gap-2">
+              <span>+ Add to Tray</span>
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // ==========================================
+    // 10. CART & CUSTOMER ORDER FLOW
+    // ==========================================
+    function addToCart(itemId) {
+      const item = menuItems.find(i => i.id === itemId);
+      if (!item) return;
+
+      const existing = cart.find(c => c.id === itemId);
+      if (existing) {
+        existing.quantity += 1;
+      } else {
+        cart.push({ ...item, quantity: 1 });
+      }
+
+      updateCartSummary();
+      showToast(`Added ${item.name} to Tray`);
+    }
+
+    function updateCartSummary() {
+      const count = cart.reduce((acc, it) => acc + it.quantity, 0);
+      const total = cart.reduce((acc, it) => acc + (it.price * it.quantity), 0);
+
+      document.getElementById('headerCartCount').textContent = count;
+      document.getElementById('headerCartTotal').textContent = `₱${total.toFixed(0)}`;
+      document.getElementById('customerCartTotal').textContent = `₱${total.toFixed(2)}`;
+    }
+
+    function openCartDrawer() {
+      renderCartDrawerItems();
+      document.getElementById('cartDrawer').classList.remove('hidden');
+    }
+
+    function closeCartDrawer() {
+      document.getElementById('cartDrawer').classList.add('hidden');
+    }
+
+    function renderCartDrawerItems() {
+      const container = document.getElementById('customerCartItems');
+      if (cart.length === 0) {
+        container.innerHTML = '<div class="py-20 text-center text-zinc-500 text-xs">Your food basket is empty.</div>';
+        return;
+      }
+
+      container.innerHTML = cart.map((it, idx) => `
+        <div class="p-3 bg-brand-card border border-brand-border rounded-2xl flex items-center justify-between gap-3 text-xs">
+          <div class="flex-1 min-w-0">
+            <h4 class="font-extrabold text-white truncate">${it.name}</h4>
+            <p class="font-mono text-brand-green font-bold">₱${it.price.toFixed(2)}</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <button onclick="changeCartQty(${idx}, -1)" class="w-6 h-6 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-bold flex items-center justify-center">-</button>
+            <span class="font-mono font-bold w-5 text-center text-white">${it.quantity}</span>
+            <button onclick="changeCartQty(${idx}, 1)" class="w-6 h-6 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white font-bold flex items-center justify-center">+</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function changeCartQty(index, delta) {
+      cart[index].quantity += delta;
+      if (cart[index].quantity <= 0) {
+        cart.splice(index, 1);
+      }
+      updateCartSummary();
+      renderCartDrawerItems();
+    }
+
+    function openCustomerCheckoutModal() {
+      if (cart.length === 0) return alert('Your cart is empty!');
+      const total = cart.reduce((acc, it) => acc + (it.price * it.quantity), 0);
+      document.getElementById('custModalTotal').textContent = `₱${total.toFixed(2)}`;
+      document.getElementById('customerCheckoutModal').classList.remove('hidden');
+    }
+
+    function closeCustomerCheckoutModal() {
+      document.getElementById('customerCheckoutModal').classList.add('hidden');
+    }
+
+    function setCustDining(opt) {
+      custDining = opt;
+      document.getElementById('custDiningDineIn').className = opt === 'DINE_IN' ? 'py-2 rounded-xl bg-brand-card text-brand-green border border-brand-border font-bold' : 'py-2 rounded-xl bg-brand-bg text-zinc-400 font-bold';
+      document.getElementById('custDiningTakeOut').className = opt === 'TAKE_OUT' ? 'py-2 rounded-xl bg-brand-card text-brand-green border border-brand-border font-bold' : 'py-2 rounded-xl bg-brand-bg text-zinc-400 font-bold';
+    }
+
+    function setCustPayment(method) {
+      custPayment = method;
+      ['Cash', 'Gcash', 'Maya'].forEach(m => {
+        const btn = document.getElementById(`custPay${m}`);
+        if (m.toUpperCase() === method) {
+          btn.className = 'py-2 rounded-xl bg-brand-green text-black font-black';
+        } else {
+          btn.className = 'py-2 rounded-xl bg-brand-bg text-zinc-400 font-bold';
+        }
+      });
+    }
+
+    function submitCustomerOrder() {
+      if (cart.length === 0) return;
+      const orderNumber = 'ORD-' + Math.floor(1000 + Math.random() * 9000);
+      const total = cart.reduce((acc, it) => acc + (it.price * it.quantity), 0);
+
+      const newOrder = {
+        id: 'ORDER-' + Date.now(),
+        orderNumber,
+        items: [...cart],
+        diningOption: custDining,
+        paymentMethod: custPayment,
+        totalAmount: total,
+        status: 'PENDING',
+        createdAt: new Date().toISOString()
+      };
+
+      salesOrders.unshift(newOrder);
+      saveOrdersToStorage();
+
+      // Broadcast order in real time
+      orderChannel.postMessage({ type: 'NEW_ORDER', order: newOrder });
+
+      closeCustomerCheckoutModal();
+      closeCartDrawer();
+      clearCart();
+      displayReceipt(newOrder);
+      showToast(`Order Placed: ${orderNumber}`);
+    }
+
+    // ==========================================
+    // 11. CASHIER POS LOGIC
+    // ==========================================
+    let posCategory = 'ALL';
+    let isPosSeniorDiscount = false;
+
+    function renderPosCategoryTabs() {
+      const container = document.getElementById('posCategoryTabs');
+      container.innerHTML = CATEGORIES.map(cat => `
+        <button onclick="setPosCategory('${cat}')" class="px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition ${posCategory === cat ? 'bg-brand-green text-brand-bg' : 'bg-brand-surface text-zinc-400 border border-brand-border'}">
+          ${cat}
+        </button>
+      `).join('');
+    }
+
+    function setPosCategory(cat) {
+      posCategory = cat;
+      renderPosCategoryTabs();
+      renderPosGrid();
+    }
+
+    function renderPosGrid() {
+      const grid = document.getElementById('posGridContainer');
+      let filtered = menuItems;
+      if (posCategory !== 'ALL') filtered = filtered.filter(i => i.category === posCategory);
+
+      grid.innerHTML = filtered.map(item => `
+        <div onclick="addPosItem('${item.id}')" class="p-3 bg-brand-surface hover:border-brand-green border border-brand-border rounded-2xl cursor-pointer select-none transition active:scale-95 flex flex-col justify-between">
+          <div>
+            <span class="text-[10px] font-mono text-zinc-400 block">${item.category}</span>
+            <h4 class="font-extrabold text-xs text-white leading-tight mt-0.5">${item.name}</h4>
+          </div>
+          <div class="mt-2 flex items-center justify-between">
+            <span class="font-mono text-brand-green font-bold text-xs">₱${item.price.toFixed(2)}</span>
+            <span class="text-xs text-zinc-500 font-bold">+</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function addPosItem(itemId) {
+      const item = menuItems.find(i => i.id === itemId);
+      if (!item) return;
+
+      const existing = posCart.find(c => c.id === itemId);
+      if (existing) {
+        existing.quantity += 1;
+      } else {
+        posCart.push({ ...item, quantity: 1 });
+      }
+      renderPosTicket();
+    }
+
+    function renderPosTicket() {
+      const container = document.getElementById('posTicketItems');
+      if (posCart.length === 0) {
+        container.innerHTML = '<p class="text-zinc-500 text-center py-8">No items punched yet.<br>Click food on left grid.</p>';
+        updatePosTotals(0);
+        return;
+      }
+
+      container.innerHTML = posCart.map((it, idx) => `
+        <div class="pt-2 flex items-center justify-between">
+          <div class="flex-1 min-w-0 pr-2">
+            <div class="font-bold text-white truncate">${it.name}</div>
+            <div class="text-[10px] text-zinc-400 font-mono">₱${it.price.toFixed(2)} × ${it.quantity} = ₱${(it.price * it.quantity).toFixed(2)}</div>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button onclick="changePosQty(${idx}, -1)" class="w-5 h-5 rounded bg-zinc-800 text-zinc-300 font-bold flex items-center justify-center">-</button>
+            <span class="w-4 text-center font-mono font-bold">${it.quantity}</span>
+            <button onclick="changePosQty(${idx}, 1)" class="w-5 h-5 rounded bg-zinc-800 text-zinc-300 font-bold flex items-center justify-center">+</button>
+          </div>
+        </div>
+      `).join('');
+
+      const subtotal = posCart.reduce((acc, it) => acc + (it.price * it.quantity), 0);
+      updatePosTotals(subtotal);
+    }
+
+    function changePosQty(index, delta) {
+      posCart[index].quantity += delta;
+      if (posCart[index].quantity <= 0) posCart.splice(index, 1);
+      renderPosTicket();
+    }
+
+    function updatePosTotals(subtotal) {
+      const discount = isPosSeniorDiscount ? subtotal * 0.20 : 0;
+      const payable = subtotal - discount;
+
+      document.getElementById('posSubtotal').textContent = `₱${subtotal.toFixed(2)}`;
+      document.getElementById('posDiscountAmount').textContent = `-₱${discount.toFixed(2)}`;
+      document.getElementById('posPayableTotal').textContent = `₱${payable.toFixed(2)}`;
+
+      const tenderVal = parseFloat(document.getElementById('posTenderInput').value) || 0;
+      const change = Math.max(0, tenderVal - payable);
+      document.getElementById('posChangeDisplay').textContent = `₱${change.toFixed(2)}`;
+    }
+
+    function togglePosSeniorDiscount(checked) {
+      isPosSeniorDiscount = checked;
+      const subtotal = posCart.reduce((acc, it) => acc + (it.price * it.quantity), 0);
+      updatePosTotals(subtotal);
+    }
+
+    function setPosDining(opt) {
+      posDining = opt;
+      document.getElementById('posDiningDineIn').className = opt === 'DINE_IN' ? 'py-1.5 rounded-lg bg-brand-card text-brand-green border border-brand-border transition' : 'py-1.5 rounded-lg text-zinc-400 hover:text-white transition';
+      document.getElementById('posDiningTakeOut').className = opt === 'TAKE_OUT' ? 'py-1.5 rounded-lg bg-brand-card text-brand-green border border-brand-border transition' : 'py-1.5 rounded-lg text-zinc-400 hover:text-white transition';
+    }
+
+    function setPosPayment(method) {
+      posPayment = method;
+      ['Cash', 'Gcash', 'Maya'].forEach(m => {
+        const btn = document.getElementById(`posPay${m}`);
+        if (m.toUpperCase() === method) {
+          btn.className = 'py-1.5 rounded-lg bg-brand-green text-black font-black';
+        } else {
+          btn.className = 'py-1.5 rounded-lg bg-brand-card text-zinc-300 hover:bg-zinc-700';
+        }
+      });
+      document.getElementById('posCashTenderRow').style.display = method === 'CASH' ? 'flex' : 'none';
+    }
+
+    function calcPosChange(val) {
+      const tender = parseFloat(val) || 0;
+      const subtotal = posCart.reduce((acc, it) => acc + (it.price * it.quantity), 0);
+      const discount = isPosSeniorDiscount ? subtotal * 0.20 : 0;
+      const payable = subtotal - discount;
+      const change = Math.max(0, tender - payable);
+      document.getElementById('posChangeDisplay').textContent = `₱${change.toFixed(2)}`;
+    }
+
+    function punchPosOrder() {
+      if (posCart.length === 0) return alert('No items on POS ticket.');
+      const subtotal = posCart.reduce((acc, it) => acc + (it.price * it.quantity), 0);
+      const discount = isPosSeniorDiscount ? subtotal * 0.20 : 0;
+      const totalAmount = subtotal - discount;
+      const orderNumber = 'POS-' + Math.floor(1000 + Math.random() * 9000);
+
+      const newOrder = {
+        id: 'POS-' + Date.now(),
+        orderNumber,
+        items: [...posCart],
+        diningOption: posDining,
+        paymentMethod: posPayment,
+        discountApplied: isPosSeniorDiscount ? 'SENIOR_PWD_20' : 'NONE',
+        totalAmount,
+        status: 'PENDING',
+        createdAt: new Date().toISOString()
+      };
+
+      salesOrders.unshift(newOrder);
+      saveOrdersToStorage();
+
+      orderChannel.postMessage({ type: 'NEW_ORDER', order: newOrder });
+
+      clearPosCart();
+      displayReceipt(newOrder);
+      showToast(`Punched Ticket: ${orderNumber}`);
+    }
+
+    function clearPosCart() {
+      posCart = [];
+      document.getElementById('posTenderInput').value = '';
+      document.getElementById('posDiscountCheckbox').checked = false;
+      isPosSeniorDiscount = false;
+      renderPosTicket();
+    }
+
+    // ==========================================
+    // 12. KITCHEN KDS LOGIC
+    // ==========================================
+    function renderKdsOrders() {
+      const container = document.getElementById('kdsGridContainer');
+      const active = salesOrders.filter(o => o.status !== 'COMPLETED');
+      updateKdsBadge();
+
+      if (active.length === 0) {
+        container.innerHTML = `
+          <div class="col-span-full py-20 text-center text-zinc-500 bg-brand-surface rounded-3xl border border-brand-border">
+            <span class="text-4xl block mb-2">🍽️</span>
+            <p class="font-bold text-white text-sm">All Kitchen Orders Cleared!</p>
+            <p class="text-xs text-zinc-400 mt-1">New customer or POS orders will ring here automatically.</p>
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = active.map(order => {
+        const isPending = order.status === 'PENDING';
+        const isCooking = order.status === 'COOKING';
+        const isReady = order.status === 'READY';
+
+        return `
+          <div class="bg-brand-surface rounded-3xl border ${isReady ? 'border-brand-green/60' : isCooking ? 'border-amber-500/50' : 'border-brand-border'} p-4 flex flex-col justify-between space-y-4 shadow-xl">
+            <div class="space-y-3">
+              <div class="flex items-center justify-between border-b border-brand-border pb-2.5">
+                <div>
+                  <h3 class="font-black text-sm text-white font-mono">${order.orderNumber}</h3>
+                  <span class="text-[10px] uppercase font-bold text-zinc-400">${order.diningOption}</span>
+                </div>
+                <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase font-mono ${isReady ? 'bg-brand-green text-brand-bg' : isCooking ? 'bg-amber-400 text-black' : 'bg-zinc-800 text-zinc-300'}">
+                  ${order.status}
+                </span>
+              </div>
+              <div class="space-y-1.5 text-xs">
+                ${order.items.map(it => `
+                  <div class="flex justify-between items-baseline font-mono">
+                    <span class="font-bold text-white"><strong class="text-brand-green">${it.quantity}×</strong> ${it.name}</span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+            <div class="pt-2 border-t border-brand-border flex gap-2">
+              ${isPending ? `
+                <button onclick="advanceKdsStatus('${order.id}', 'COOKING')" class="flex-1 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-black text-xs">🍳 Start Cooking</button>
+              ` : isCooking ? `
+                <button onclick="advanceKdsStatus('${order.id}', 'READY')" class="flex-1 py-2 rounded-xl bg-brand-green text-brand-bg hover:bg-[#b8e2af] font-black text-xs">🔔 Order Ready</button>
+              ` : `
+                <button onclick="advanceKdsStatus('${order.id}', 'COMPLETED')" class="flex-1 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs">✓ Handed Over</button>
+              `}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function advanceKdsStatus(orderId, newStatus) {
+      const order = salesOrders.find(o => o.id === orderId);
+      if (!order) return;
+
+      order.status = newStatus;
+      saveOrdersToStorage();
+
+      orderChannel.postMessage({ type: 'STATUS_UPDATE', orderId, status: newStatus });
+
+      renderKdsOrders();
+      updateKdsBadge();
+      showToast(`Ticket ${order.orderNumber} is now ${newStatus}`);
+    }
+
+    function clearCompletedKdsOrders() {
+      salesOrders = salesOrders.filter(o => o.status !== 'COMPLETED');
+      saveOrdersToStorage();
+      renderKdsOrders();
+      showToast('Cleared completed kitchen tickets.');
+    }
+
+    function updateKdsBadge() {
+      const count = salesOrders.filter(o => o.status !== 'COMPLETED').length;
+      const el = document.getElementById('kdsBadgeCount');
+      if (el) el.textContent = count;
+    }
+
+    // ==========================================
+    // 13. OWNER DASHBOARD & SUPABASE SETTINGS
+    // ==========================================
+    function openOwnerDashboardModal(tab = 'reports') {
+      if (currentRole !== 'OWNER') {
+        openPinModal();
+        return;
+      }
+      switchOwnerTab(tab);
+      renderOwnerReports();
+      renderOwnerMenuCatalog();
+      document.getElementById('ownerDashboardModal').classList.remove('hidden');
+    }
+
+    function closeOwnerDashboardModal() {
+      document.getElementById('ownerDashboardModal').classList.add('hidden');
+    }
+
+    function switchOwnerTab(tab) {
+      ['reports', 'menu', 'security'].forEach(t => {
+        const sec = document.getElementById(`ownerSection${t.charAt(0).toUpperCase() + t.slice(1)}`);
+        const btn = document.getElementById(`ownerTab${t.charAt(0).toUpperCase() + t.slice(1)}`);
+        if (t === tab) {
+          sec.classList.remove('hidden');
+          btn.className = 'py-3 text-xs font-extrabold text-amber-400 border-b-2 border-amber-400';
+        } else {
+          sec.classList.add('hidden');
+          btn.className = 'py-3 text-xs font-bold text-zinc-400 hover:text-white';
+        }
+      });
+    }
+
+    function renderOwnerReports() {
+      const gross = salesOrders.reduce((acc, o) => acc + o.totalAmount, 0);
+      const count = salesOrders.length;
+      const aov = count > 0 ? gross / count : 0;
+
+      const cash = salesOrders.filter(o => o.paymentMethod === 'CASH').reduce((a, o) => a + o.totalAmount, 0);
+      const gcash = salesOrders.filter(o => o.paymentMethod === 'GCASH').reduce((a, o) => a + o.totalAmount, 0);
+      const maya = salesOrders.filter(o => o.paymentMethod === 'MAYA').reduce((a, o) => a + o.totalAmount, 0);
+
+      document.getElementById('ownerStatRevenue').textContent = `₱${gross.toFixed(2)}`;
+      document.getElementById('ownerStatOrderCount').textContent = count;
+      document.getElementById('ownerStatAov').textContent = `₱${aov.toFixed(2)}`;
+
+      document.getElementById('ownerStatCash').textContent = `₱${cash.toFixed(2)}`;
+      document.getElementById('ownerStatGcash').textContent = `₱${gcash.toFixed(2)}`;
+      document.getElementById('ownerStatMaya').textContent = `₱${maya.toFixed(2)}`;
+
+      // Product sales tally
+      const itemMap = {};
+      salesOrders.forEach(order => {
+        order.items.forEach(it => {
+          if (!itemMap[it.name]) itemMap[it.name] = { qty: 0, total: 0 };
+          itemMap[it.name].qty += it.quantity;
+          itemMap[it.name].total += it.price * it.quantity;
+        });
+      });
+
+      const tbody = document.getElementById('ownerSalesBreakdownTbody');
+      const entries = Object.entries(itemMap);
+      if (entries.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="p-3 text-center text-zinc-500">No sales transactions logged today.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = entries.map(([name, stat]) => `
+        <tr>
+          <td class="p-2.5 font-bold text-white">${name}</td>
+          <td class="p-2.5 text-center">${stat.qty}</td>
+          <td class="p-2.5 text-right text-brand-green font-bold">₱${stat.total.toFixed(2)}</td>
+        </tr>
+      `).join('');
+    }
+
+    function exportSalesToCsv() {
+      let csv = 'OrderNumber,Date,DiningOption,PaymentMethod,TotalAmount,Status\n';
+      salesOrders.forEach(o => {
+        csv += `"${o.orderNumber}","${o.createdAt}","${o.diningOption}","${o.paymentMethod}",${o.totalAmount},"${o.status}"\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `tagpuan_sales_${Date.now()}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function renderOwnerMenuCatalog() {
+      const tbody = document.getElementById('ownerMenuCatalogTbody');
+      tbody.innerHTML = menuItems.map(item => `
+        <tr>
+          <td class="p-2.5 flex items-center gap-2">
+            <img src="${item.image}" alt="" class="w-7 h-7 rounded-lg object-cover bg-zinc-800" />
+            <span class="font-bold text-white">${item.name}</span>
+          </td>
+          <td class="p-2.5 text-zinc-400 font-mono text-[10px]">${item.category}</td>
+          <td class="p-2.5 text-right font-mono font-bold text-brand-green">₱${item.price.toFixed(2)}</td>
+          <td class="p-2.5 text-right space-x-2">
+            <button onclick="openEditItemModal('${item.id}')" class="text-amber-400 hover:underline">Edit</button>
+            <button onclick="deleteItemPrompt('${item.id}')" class="text-red-400 hover:underline">Delete</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    // ==========================================
+    // 14. SUPABASE CREDENTIALS & PIN UPDATER
+    // ==========================================
+    function saveSupabaseSettings() {
+      const url = document.getElementById('supabaseUrlInput').value.trim();
+      const key = document.getElementById('supabaseKeyInput').value.trim();
+      if (!url || !key) return alert('Both URL and Anon Key are required.');
+
+      SUPABASE_URL = url;
+      SUPABASE_ANON_KEY = key;
+      localStorage.setItem('tagpuan_supabase_url', url);
+      localStorage.setItem('tagpuan_supabase_anon_key', key);
+      initSupabaseClient();
+      showToast('Supabase Connection Credentials Saved.');
+    }
+
+    async function saveStaffPinToSupabase() {
+      const pin = document.getElementById('newStaffPinInput').value.trim();
+      if (pin.length < 4) return alert('Staff PIN must be at least 4 digits');
+
+      try {
+        if (!supabase) throw new Error('Supabase not connected');
+        const { error } = await supabase
+          .from('system_access')
+          .update({ pin })
+          .eq('role', 'STAFF');
+
+        if (error) throw error;
+
+        localStorage.setItem(STORAGE_KEYS.STAFF_PIN_CACHE, pin);
+        document.getElementById('newStaffPinInput').value = '';
+        showToast('Staff PIN updated in Supabase cloud!');
+      } catch (err) {
+        console.error(err);
+        alert('Could not update in Supabase: ' + (err.message || err));
+      }
+    }
+
+    async function saveOwnerPinToSupabase() {
+      const pin = document.getElementById('newOwnerPinInput').value.trim();
+      if (pin.length < 4) return alert('Master PIN must be at least 4 digits');
+
+      try {
+        if (!supabase) throw new Error('Supabase not connected');
+        const { error } = await supabase
+          .from('system_access')
+          .update({ pin })
+          .eq('role', 'OWNER');
+
+        if (error) throw error;
+
+        localStorage.setItem(STORAGE_KEYS.OWNER_PIN_CACHE, pin);
+        document.getElementById('newOwnerPinInput').value = '';
+        showToast('Master Owner PIN updated in Supabase cloud!');
+      } catch (err) {
+        console.error(err);
+        alert('Could not update in Supabase: ' + (err.message || err));
+      }
+    }
+
+    function resetMenuToDefaults() {
+      if (confirm('Reset food menu catalog back to original items?')) {
+        menuItems = [...DEFAULT_MENU_ITEMS];
+        saveMenuToStorage();
+        renderMenu();
+        renderPosGrid();
+        renderOwnerMenuCatalog();
+        showToast('Menu reset to defaults.');
+      }
+    }
+
+    // ==========================================
+    // 15. EDIT / ADD FOOD MODAL
+    // ==========================================
+    function openAddNewItemModal() {
+      document.getElementById('editItemModalTitle').textContent = 'Add New Food Item';
+      document.getElementById('editItemId').value = '';
+      document.getElementById('editItemName').value = '';
+      document.getElementById('editItemPrice').value = '';
+      document.getElementById('editItemCategory').value = 'BURGERS';
+      document.getElementById('editItemBadge').value = '';
+      document.getElementById('editItemDesc').value = '';
+      document.getElementById('editItemImageUrl').value = '';
+      document.getElementById('editItemPreviewImg').classList.add('hidden');
+      document.getElementById('editItemPreviewPlaceholder').classList.remove('hidden');
+
+      document.getElementById('editItemModal').classList.remove('hidden');
+    }
+
+    function openEditItemModal(itemId) {
+      const item = menuItems.find(i => i.id === itemId);
+      if (!item) return;
+
+      document.getElementById('editItemModalTitle').textContent = 'Edit Food Item';
+      document.getElementById('editItemId').value = item.id;
+      document.getElementById('editItemName').value = item.name;
+      document.getElementById('editItemPrice').value = item.price;
+      document.getElementById('editItemCategory').value = item.category;
+      document.getElementById('editItemBadge').value = item.badge || '';
+      document.getElementById('editItemDesc').value = item.description || '';
+      document.getElementById('editItemImageUrl').value = item.image || '';
+
+      const preview = document.getElementById('editItemPreviewImg');
+      const placeholder = document.getElementById('editItemPreviewPlaceholder');
+      if (item.image) {
+        preview.src = item.image;
+        preview.classList.remove('hidden');
+        placeholder.classList.add('hidden');
+      } else {
+        preview.classList.add('hidden');
+        placeholder.classList.remove('hidden');
+      }
+
+      document.getElementById('editItemModal').classList.remove('hidden');
+    }
+
+    function closeEditItemModal() {
+      document.getElementById('editItemModal').classList.add('hidden');
+    }
+
+    function handleImageFileUpload(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64 = event.target.result;
+        document.getElementById('editItemImageUrl').value = base64;
+        const preview = document.getElementById('editItemPreviewImg');
+        preview.src = base64;
+        preview.classList.remove('hidden');
+        document.getElementById('editItemPreviewPlaceholder').classList.add('hidden');
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function handleSaveItem(e) {
+      e.preventDefault();
+      const id = document.getElementById('editItemId').value;
+      const name = document.getElementById('editItemName').value.trim();
+      const price = parseFloat(document.getElementById('editItemPrice').value) || 0;
+      const category = document.getElementById('editItemCategory').value;
+      const badge = document.getElementById('editItemBadge').value.trim();
+      const description = document.getElementById('editItemDesc').value.trim();
+      let image = document.getElementById('editItemImageUrl').value.trim() || 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=500';
+
+      if (id) {
+        const idx = menuItems.findIndex(i => i.id === id);
+        if (idx !== -1) {
+          menuItems[idx] = { ...menuItems[idx], name, price, category, badge, description, image };
+          showToast(`Updated "${name}"!`);
+        }
+      } else {
+        menuItems.unshift({ id: 'ITEM-' + Date.now(), name, price, category, badge, description, image });
+        showToast(`Added "${name}"!`);
+      }
+
+      saveMenuToStorage();
+      renderMenu();
+      renderPosGrid();
+      renderOwnerMenuCatalog();
+      closeEditItemModal();
+    }
+
+    function deleteItemPrompt(itemId) {
+      if (currentRole !== 'OWNER') return;
+      const item = menuItems.find(i => i.id === itemId);
+      if (!item) return;
+
+      if (confirm(`Delete "${item.name}" from menu?`)) {
+        menuItems = menuItems.filter(i => i.id !== itemId);
+        saveMenuToStorage();
+        renderMenu();
+        renderPosGrid();
+        renderOwnerMenuCatalog();
+        showToast(`Deleted "${item.name}".`);
+      }
+    }
+
+    // ==========================================
+    // 16. RECEIPT & HELPERS
+    // ==========================================
+    function displayReceipt(order) {
+      document.getElementById('receiptOrderNumber').textContent = order.orderNumber;
+      document.getElementById('receiptDiningOption').textContent = order.diningOption;
+      document.getElementById('receiptTotalAmount').textContent = `₱${order.totalAmount.toFixed(2)}`;
+
+      const itemsContainer = document.getElementById('receiptItemsList');
+      itemsContainer.innerHTML = order.items.map(it => `
+        <div class="flex justify-between">
+          <span>${it.quantity}× ${it.name}</span>
+          <span>₱${(it.price * it.quantity).toFixed(2)}</span>
+        </div>
+      `).join('');
+
+      document.getElementById('receiptModal').classList.remove('hidden');
+    }
+
+    function closeReceiptModal() {
+      document.getElementById('receiptModal').classList.add('hidden');
+    }
+
+    function clearCart() {
+      cart = [];
+      posCart = [];
+      updateCartSummary();
+      renderCartDrawerItems();
+      renderPosTicket();
+    }
+
+    function showToast(msg) {
+      const toast = document.createElement('div');
+      toast.className = 'fixed bottom-5 right-5 z-50 bg-brand-green text-brand-bg font-extrabold text-xs px-4 py-3 rounded-2xl shadow-2xl border border-white/20 animate-pop';
+      toast.textContent = msg;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3200);
+    }
+
+    window.addEventListener('DOMContentLoaded', initSystem);
+  </script>
+</body>
+</html>
