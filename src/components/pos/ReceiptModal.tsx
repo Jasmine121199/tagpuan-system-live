@@ -1,6 +1,7 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { ReceiptData } from '../../types';
-import { Printer, CheckCircle, X, PlusCircle, Share2 } from 'lucide-react';
+import { Printer, CheckCircle, X, PlusCircle, FileDown, CloudCheck, Loader2 } from 'lucide-react';
+import { googleSheetsPersistence } from '../../lib/googleSheetsPersistence';
 
 interface ReceiptModalProps {
   receipt: ReceiptData;
@@ -16,11 +17,35 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
   onNewOrder
 }) => {
   const receiptRef = useRef<HTMLDivElement>(null);
+  const [isSavingDrivePdf, setIsSavingDrivePdf] = useState(false);
+  const [driveSaveStatus, setDriveSaveStatus] = useState<string | null>(
+    googleSheetsPersistence.getConfig().autoSaveReceiptsToDrive
+      ? 'e-Receipt PDF auto-archived to Google Drive'
+      : null
+  );
 
   if (!isOpen) return null;
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleSaveEReceiptPdfToDrive = async () => {
+    try {
+      setIsSavingDrivePdf(true);
+      const item = await googleSheetsPersistence.generateAndSaveEReceiptToDrive(receipt, {
+        downloadLocally: true
+      });
+      setDriveSaveStatus(
+        item.status === 'SAVED_TO_DRIVE'
+          ? `Saved to Google Drive (${item.fileName})`
+          : `PDF Downloaded & Queued for Google Drive (${item.fileName})`
+      );
+    } catch (err) {
+      console.warn('Error saving e-Receipt PDF to Drive:', err);
+    } finally {
+      setIsSavingDrivePdf(false);
+    }
   };
 
   return (
@@ -192,26 +217,48 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({
         </div>
 
         {/* Action Controls */}
-        <div className="bg-zinc-100 p-4 border-t border-zinc-200 flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={handlePrint}
-            className="flex-1 py-2.5 px-3 rounded-xl text-xs font-bold text-zinc-800 bg-white border border-zinc-300 hover:bg-zinc-50 transition flex items-center justify-center gap-1.5 shadow-xs"
-          >
-            <Printer className="w-4 h-4" />
-            <span>Print Receipt</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              onClose();
-              onNewOrder();
-            }}
-            className="flex-1 py-2.5 px-3 rounded-xl text-xs font-extrabold text-[#111111] bg-[#CDEBC5] hover:bg-[#bce4b2] transition flex items-center justify-center gap-1.5 shadow-xs"
-          >
-            <PlusCircle className="w-4 h-4" />
-            <span>New Order</span>
-          </button>
+        <div className="bg-zinc-100 p-4 border-t border-zinc-200 space-y-2.5">
+          {driveSaveStatus && (
+            <div className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-800 font-semibold">
+              <span className="flex items-center gap-1.5 truncate">
+                <CloudCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span className="truncate">{driveSaveStatus}</span>
+              </span>
+              <span className="text-[9px] font-mono uppercase bg-emerald-200/70 text-emerald-900 px-1.5 py-0.5 rounded shrink-0">
+                Drive Sync
+              </span>
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="flex-1 py-2.5 px-2.5 rounded-xl text-xs font-bold text-zinc-800 bg-white border border-zinc-300 hover:bg-zinc-50 transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+            >
+              <Printer className="w-4 h-4" />
+              <span>Print</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveEReceiptPdfToDrive}
+              disabled={isSavingDrivePdf}
+              className="flex-1 py-2.5 px-2.5 rounded-xl text-xs font-bold text-white bg-zinc-900 hover:bg-black transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-60"
+            >
+              {isSavingDrivePdf ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileDown className="w-4 h-4 text-[#CDEBC5]" />}
+              <span>e-Receipt PDF</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onNewOrder();
+              }}
+              className="flex-1 py-2.5 px-2.5 rounded-xl text-xs font-extrabold text-[#111111] bg-[#CDEBC5] hover:bg-[#bce4b2] transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>New Order</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

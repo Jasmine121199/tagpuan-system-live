@@ -26,6 +26,7 @@ import { IncomingKioskOrdersModal } from './IncomingKioskOrdersModal';
 import { api, getAuthToken, normalizeCategory } from '../../lib/api';
 import { formatPeso } from '../../utils/currency';
 import { subscribeToKioskOrdersRealtime } from '../../lib/supabase';
+import { googleSheetsPersistence } from '../../lib/googleSheetsPersistence';
 import { getProductImageWithFallback, getFoodSvgForProduct } from '../../utils/foodSvgAssets';
 import {
   deductInventoryForOrderItems,
@@ -386,7 +387,9 @@ export const POSView: React.FC = () => {
       const custData = custRes.ok ? await custRes.json() : { customers: [] };
       const ticketsData = ticketsRes.ok ? await ticketsRes.json() : { tickets: [] };
 
-      setProducts(prodData.products || []);
+      // Hydrate POS menu items on initial load via Google Apps Script GET action="getMenu"
+      const hydratedMenu = await googleSheetsPersistence.getMenu(prodData.products || []);
+      setProducts(hydratedMenu && hydratedMenu.length > 0 ? hydratedMenu : (prodData.products || []));
       setModifierGroups(modData.groups || []);
       setPaymentConfigs(cfgData.configs || []);
       if (branchData.branches && branchData.branches.length > 0) {
@@ -891,6 +894,9 @@ export const POSView: React.FC = () => {
     }
     window.dispatchEvent(new CustomEvent('tagpuan:order_paid', { detail: newOrder }));
 
+    // Trigger Google Apps Script POST action "createOrder" (saves to IndexedDB/localStorage if offline)
+    void googleSheetsPersistence.createOrder(newOrder, true);
+
     // 4. Update Shift Statistics
     setActiveSession(prev => prev ? {
       ...prev,
@@ -1026,6 +1032,8 @@ export const POSView: React.FC = () => {
 
     // Instant Real-Time KDS Routing
     window.dispatchEvent(new CustomEvent('tagpuan:order_paid', { detail: result.order }));
+    // Trigger Google Apps Script POST action "createOrder" (saves to IndexedDB/localStorage if offline)
+    void googleSheetsPersistence.createOrder(result.order, true);
     try {
       localStorage.setItem('tagpuan_latest_kitchen_order', JSON.stringify({
         timestamp: Date.now(),

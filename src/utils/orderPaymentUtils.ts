@@ -1,7 +1,9 @@
 import { Order, ReceiptData, PaymentMethod } from '../types';
+import { googleSheetsPersistence } from '../lib/googleSheetsPersistence';
 
 /**
- * Deducts stock from current inventory map according to product recipes and saves to localStorage
+ * Deducts stock from current inventory map according to product recipes, saves to localStorage,
+ * and syncs stock deduction to Google Sheets Tab 2 ("Menu_Inventory").
  */
 export const deductInventoryForOrderItems = (
   items: { product_name: string; quantity: number }[],
@@ -85,13 +87,16 @@ export const deductInventoryForOrderItems = (
     localStorage.setItem('inventory', JSON.stringify(inv));
   } catch (e) {}
 
+  // Also sync deduction directly to Google Sheets Tab 2 ("Menu_Inventory") + LocalStorage fallback
+  void googleSheetsPersistence.deductInventoryInSheet(items);
+
   (window as any).inventory = inv;
   return inv;
 };
 
 /**
  * Instantly dispatches a paid order to the Kitchen Display System (KDS)
- * via custom DOM event and localStorage sync
+ * via custom DOM event, localStorage sync, and Google Sheets Tab 1 ("Orders_Log")
  */
 export const dispatchOrderToKDS = (paidOrder: Order): void => {
   // Ensure kitchen status is NEW if not already preparing
@@ -129,10 +134,13 @@ export const dispatchOrderToKDS = (paidOrder: Order): void => {
     localStorage.setItem('kds_orders', JSON.stringify(updated));
     (window as any).kitchenOrders = updated;
   } catch (e) {}
+
+  // 4. Sync directly to Google Sheets Tab 1 ("Orders_Log") with LocalStorage fallback
+  void googleSheetsPersistence.logOrderToSheet(orderForKDS, false);
 };
 
 /**
- * Generates thermal printable receipt data for an order
+ * Generates thermal printable receipt data for an order and automatically saves PDF e-Receipt to Google Drive
  */
 export const generateReceiptForOrder = (
   order: Order,
@@ -144,7 +152,7 @@ export const generateReceiptForOrder = (
   const tender = typeof amountReceived === 'number' ? amountReceived : order.total;
   const change = typeof changeAmount === 'number' ? changeAmount : Math.max(0, tender - order.total);
 
-  return {
+  const receipt: ReceiptData = {
     header: 'TAGPUAN OFFICIAL RECEIPT',
     reference_number: referenceNumber || `RCP-${Math.floor(100000 + Math.random() * 900000)}`,
     order_number: order.order_number,
@@ -169,4 +177,11 @@ export const generateReceiptForOrder = (
       modifiers: (i.modifiers || []).map((m: any) => m.modifier_name || String(m))
     }))
   };
+
+  // Automatically generate and save PDF e-Receipt to Google Drive (or LocalStorage Drive archive fallback)
+  if (googleSheetsPersistence.getConfig().autoSaveReceiptsToDrive) {
+    void googleSheetsPersistence.generateAndSaveEReceiptToDrive(receipt, { downloadLocally: false });
+  }
+
+  return receipt;
 };

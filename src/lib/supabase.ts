@@ -61,6 +61,24 @@ export const isSupabaseConfigured = (): boolean => {
   );
 };
 
+/**
+ * Protects Supabase queries against temporary network or cold-start delays
+ * so the UI never hangs or renders a blank screen.
+ */
+async function withSupabaseTimeout<T>(promiseLike: PromiseLike<T>, timeoutMs: number = 3500): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(new Error(`Supabase query timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([Promise.resolve(promiseLike), timeoutPromise]);
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  }
+}
+
 // -----------------------------------------------------------------------------
 // 2. SUPABASE PRODUCTION REPOSITORY METHODS
 // Directly queries Supabase tables when configured.
@@ -79,7 +97,7 @@ export const supabaseAdapter = {
       if (branchId && branchId !== 'ALL') {
         query = query.eq('branch_id', branchId);
       }
-      const { data, error } = await query;
+      const { data, error } = await withSupabaseTimeout(query);
       if (error) {
         console.warn('[SupabaseAdapter:getOrders] query error:', error.message);
         return null;
@@ -100,10 +118,12 @@ export const supabaseAdapter = {
     if (!isSupabaseConfigured()) return null;
     try {
       const supabase = getSupabaseClient();
-      const { data, error } = await supabase
-        .from('branches')
-        .select('*')
-        .order('name', { ascending: true });
+      const { data, error } = await withSupabaseTimeout(
+        supabase
+          .from('branches')
+          .select('*')
+          .order('name', { ascending: true })
+      );
       if (error) {
         console.warn('[SupabaseAdapter:getBranches] query error:', error.message);
         return null;
@@ -120,10 +140,12 @@ export const supabaseAdapter = {
     if (!isSupabaseConfigured()) return null;
     try {
       const supabase = getSupabaseClient();
-      const { data, error } = await supabase
-        .from('menu_items')
-        .select('*')
-        .order('display_order', { ascending: true });
+      const { data, error } = await withSupabaseTimeout(
+        supabase
+          .from('menu_items')
+          .select('*')
+          .order('display_order', { ascending: true })
+      );
       if (error) {
         console.warn('[SupabaseAdapter:getMenuItems] query error:', error.message);
         return null;
@@ -140,10 +162,12 @@ export const supabaseAdapter = {
     if (!isSupabaseConfigured()) return null;
     try {
       const supabase = getSupabaseClient();
-      const { data, error } = await supabase
-        .from('ingredients')
-        .select('*')
-        .order('item_name', { ascending: true });
+      const { data, error } = await withSupabaseTimeout(
+        supabase
+          .from('ingredients')
+          .select('*')
+          .order('item_name', { ascending: true })
+      );
       if (error) {
         console.warn('[SupabaseAdapter:getIngredients] query error:', error.message);
         return null;
@@ -164,7 +188,7 @@ export const supabaseAdapter = {
       if (branchId && branchId !== 'ALL') {
         query = query.eq('branch_id', branchId);
       }
-      const { data, error } = await query;
+      const { data, error } = await withSupabaseTimeout(query);
       if (error) {
         console.warn('[SupabaseAdapter:getInventoryTransactions] error:', error.message);
         return null;
@@ -211,7 +235,7 @@ export const supabaseAdapter = {
       if (branchId && branchId !== 'ALL') {
         query = query.eq('branch_id', branchId);
       }
-      const { data, error } = await query;
+      const { data, error } = await withSupabaseTimeout(query);
       if (error) {
         console.warn('[SupabaseAdapter:getRemittances] error:', error.message);
         return null;
@@ -268,7 +292,7 @@ export const supabaseAdapter = {
       if (branchId && branchId !== 'ALL') {
         query = query.eq('branch_id', branchId);
       }
-      const { data, error } = await query;
+      const { data, error } = await withSupabaseTimeout(query);
       if (error) {
         console.warn('[SupabaseAdapter:getAttendance] error:', error.message);
         return null;
@@ -312,10 +336,12 @@ export const supabaseAdapter = {
     if (!isSupabaseConfigured()) return null;
     try {
       const supabase = getSupabaseClient();
-      const { data, error } = await supabase
-        .from('loyalty_customers')
-        .select('*')
-        .order('customer_name', { ascending: true });
+      const { data, error } = await withSupabaseTimeout(
+        supabase
+          .from('loyalty_customers')
+          .select('*')
+          .order('customer_name', { ascending: true })
+      );
       if (error) {
         console.warn('[SupabaseAdapter:getLoyaltyCustomers] error:', error.message);
         return null;

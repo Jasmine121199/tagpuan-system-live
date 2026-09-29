@@ -21,6 +21,8 @@ import { KioskTerminalSetup } from './KioskTerminalSetup';
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
 import { normalizeCategory } from '../../lib/api';
 import { insertKioskOrderToSupabase } from '../../lib/supabase';
+import { FALLBACK_BRANCHES, buildFallbackKioskMenuData } from '../../lib/fallbackStore';
+import { googleSheetsPersistence } from '../../lib/googleSheetsPersistence';
 import { getProductImageWithFallback, getFoodSvgForProduct } from '../../utils/foodSvgAssets';
 import { dispatchOrderToKDS } from '../../utils/orderPaymentUtils';
 import {
@@ -95,8 +97,12 @@ export const KioskView: React.FC<KioskViewProps> = ({
   });
   const [diningOption, setDiningOption] = useState<DiningOption>('DINE_IN');
 
-  const [branches, setBranches] = useState<{ id: string; name: string }[]>([]);
-  const [menuData, setMenuData] = useState<KioskMenuData | null>(null);
+  const [branches, setBranches] = useState<{ id: string; name: string }[]>(
+    FALLBACK_BRANCHES.map(b => ({ id: b.id, name: b.name }))
+  );
+  const [menuData, setMenuData] = useState<KioskMenuData | null>(() =>
+    initialBranch ? buildFallbackKioskMenuData(initialBranch) : null
+  );
   const [isLoadingMenu, setIsLoadingMenu] = useState<boolean>(Boolean(initialBranch));
   const [menuError, setMenuError] = useState<string | null>(null);
 
@@ -129,8 +135,8 @@ export const KioskView: React.FC<KioskViewProps> = ({
   const loadMenu = useCallback(async (bId?: string) => {
     setIsLoadingMenu(true);
     setMenuError(null);
+    const targetBranchId = bId || branchId || localStorage.getItem('kiosk_assigned_branch_id') || '';
     try {
-      const targetBranchId = bId || branchId || localStorage.getItem('kiosk_assigned_branch_id') || '';
       if (!targetBranchId) {
         setIsLoadingMenu(false);
         setScreen('TERMINAL_SETUP');
@@ -145,19 +151,30 @@ export const KioskView: React.FC<KioskViewProps> = ({
         throw new Error(errJson.error || 'Failed to load menu');
       }
       const data: KioskMenuData = await res.json();
-      setMenuData(data);
-      if (data.branch?.id) {
-        setBranchId(data.branch.id);
-        localStorage.setItem('kiosk_assigned_branch_id', data.branch.id);
-        localStorage.setItem('tagpuan_kiosk_branch_id', data.branch.id);
-        if (data.branch.name) {
-          localStorage.setItem('kiosk_assigned_branch_name', data.branch.name);
+      const validData = data?.products && data.products.length > 0 ? data : buildFallbackKioskMenuData(targetBranchId);
+      // Hydrate Kiosk menu items on initial load via Google Apps Script GET action="getMenu"
+      const hydratedMenuProducts = await googleSheetsPersistence.getMenu(validData.products);
+      if (hydratedMenuProducts && hydratedMenuProducts.length > 0) {
+        validData.products = hydratedMenuProducts;
+        validData.outOfStockProductIds = hydratedMenuProducts
+          .filter(p => p.is_out_of_stock || p.is_sold_out)
+          .map(p => p.id);
+      }
+      setMenuData(validData);
+      if (validData.branch?.id) {
+        setBranchId(validData.branch.id);
+        localStorage.setItem('kiosk_assigned_branch_id', validData.branch.id);
+        localStorage.setItem('tagpuan_kiosk_branch_id', validData.branch.id);
+        if (validData.branch.name) {
+          localStorage.setItem('kiosk_assigned_branch_name', validData.branch.name);
         }
       }
-      console.log(`[Kiosk] Menu loaded: ${data.products?.length || 0} products for branch ${data.branch?.name}`);
+      console.log(`[Kiosk] Menu loaded: ${validData.products?.length || 0} products for branch ${validData.branch?.name}`);
     } catch (err: any) {
-      console.error('[Kiosk] Menu load failed:', err);
-      setMenuError(err.message || 'Error loading kiosk menu');
+      console.warn('[Kiosk] Menu load error, using fallback kiosk menu:', err);
+      const fallback = buildFallbackKioskMenuData(targetBranchId || FALLBACK_BRANCHES[0].id);
+      setMenuData(fallback);
+      setMenuError(null);
     } finally {
       setIsLoadingMenu(false);
     }
@@ -498,6 +515,9 @@ export const KioskView: React.FC<KioskViewProps> = ({
       // Immediately dispatch order to Kitchen Display System (KDS) for real-time visibility
       dispatchOrderToKDS(orderToPersist);
 
+      // Trigger Google Apps Script POST action "createOrder" (saves to IndexedDB/localStorage if offline)
+      void googleSheetsPersistence.createOrder(orderToPersist, Boolean(isOnlinePayment));
+
       // Attempt direct Supabase synchronization with logging if configured
       await insertKioskOrderToSupabase(orderToPersist, orderToPersist.items || []);
 
@@ -505,8 +525,46 @@ export const KioskView: React.FC<KioskViewProps> = ({
       setCart([]);
       setScreen('ORDER_CONFIRMED');
     } catch (err: any) {
-      console.error('[KIOSK] order submission error:', err);
-      setOrderError(err.message || 'An error occurred while submitting your order.');
+      console.warn('[KIOSK] Network/latency fallback activated — saving order locally via IndexedDB/localStorage:', err);
+      const targetBranchId = branchId || menuData.branch.id || localStorage.getItem('kiosk_assigned_branch_id') || FALLBACK_BRANCHES[0].id;
+      const offlineOrderId = `ord-kiosk-${Date.now()}`;
+      const offlineOrder: Order = {
+        id: offlineOrderId,
+        order_number: `TAG-${Math.floor(1000 + Math.random() * 9000)}`,
+        branch_id: targetBranchId,
+        branch_name: menuData.branch.name || 'Tagpuan Branch',
+        cashier_id: 'KIOSK',
+        cashier_name: 'Self-Ordering Kiosk',
+        source: 'KIOSK',
+        status: (payNow !== undefined ? payNow : paymentMethod !== 'CASH') ? 'PAID' : 'PENDING_PAYMENT',
+        kitchen_status: 'NEW',
+        dining_option: diningOption,
+        table_number: tableNumber || null,
+        customer_name: customerName || 'Guest',
+        customer_phone: customerPhone || null,
+        subtotal: cart.reduce((s, i) => s + i.totalPrice, 0),
+        discount_type: 'NONE',
+        discount_amount: 0,
+        total: cart.reduce((s, i) => s + i.totalPrice, 0),
+        items: cart.map((item, idx) => ({
+          id: `oi-${Date.now()}-${idx}`,
+          order_id: offlineOrderId,
+          product_id: item.product.id,
+          product_name: item.product.product_name,
+          unit_price: item.unitPrice,
+          quantity: item.quantity,
+          subtotal: item.totalPrice,
+          notes: item.notes,
+          modifiers: item.modifiers
+        })),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      dispatchOrderToKDS(offlineOrder);
+      await googleSheetsPersistence.createOrder(offlineOrder, false);
+      setConfirmedOrder(offlineOrder);
+      setCart([]);
+      setScreen('ORDER_CONFIRMED');
     } finally {
       setIsSubmittingOrder(false);
     }

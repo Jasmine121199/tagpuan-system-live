@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { CashierShift, CashDenominationCount, Branch } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { DenominationCalculator, calculateTotalCash } from './DenominationCalculator';
+import { googleSheetsPersistence } from '../../lib/googleSheetsPersistence';
 import {
   Clock,
   Unlock,
@@ -158,6 +159,23 @@ export const CashierShiftsTab: React.FC<CashierShiftsTabProps> = ({ branches }) 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to close cashier shift.');
       }
+
+      const countedTotal = calculateTotalCash(closeDenominations);
+      const expectedCash = activeShiftToClose.expected_cash || activeShiftToClose.opening_cash || countedTotal;
+      // Trigger Google Apps Script POST action "saveAudit" for shift sales closing report
+      void googleSheetsPersistence.saveAudit({
+        daily_remittance: countedTotal,
+        closing_cash: countedTotal,
+        expected_cash: expectedCash,
+        actual_cash_counted: countedTotal,
+        cash_variance: countedTotal - expectedCash,
+        expenses: activeShiftToClose.cash_expenses || 0,
+        cashier_name: activeShiftToClose.cashier_name || user?.full_name || 'Cashier',
+        branch_name: activeShiftToClose.branch_name || user?.branch_name || 'Tagpuan Branch',
+        report_type: 'SALES_CLOSING_REPORT',
+        status: 'CLOSED',
+        notes: closeNotes.trim() || varianceReason.trim() || `Shift #${activeShiftToClose.shift_number} Closing Report`
+      });
 
       setIsCloseShiftModalOpen(false);
       setActiveShiftToClose(null);

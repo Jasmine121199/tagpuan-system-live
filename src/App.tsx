@@ -33,6 +33,8 @@ import { ManagerPinSetupModal } from './components/auth/ManagerPinSetupModal';
 import { DecoyInventorySheet } from './components/common/DecoyInventorySheet';
 import { FinancialDashboardView } from './components/financial/FinancialDashboardView';
 import { ShiftProvider, useShift } from './context/ShiftContext';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { googleSheetsPersistence } from './lib/googleSheetsPersistence';
 import { Loader2, ShieldAlert, X, Clock, AlertTriangle, ChefHat } from 'lucide-react';
 
 const MainAppContent: React.FC = () => {
@@ -43,6 +45,45 @@ const MainAppContent: React.FC = () => {
   const [isCreateUserModalOpen, setIsCreateUserModalOpen] = useState(false);
   const [resetToken, setResetToken] = useState<string | null>(null);
   const [accessDeniedNotice, setAccessDeniedNotice] = useState<string | null>(null);
+  const [isHydratingSheets, setIsHydratingSheets] = useState<boolean>(true);
+  const [sheetsHydrationStatus, setSheetsHydrationStatus] = useState<'HYDRATING' | 'SYNCED' | 'FALLBACK'>('HYDRATING');
+
+  // Auto-hydrate menu and pending sync queue from Google Sheets API on initial mount with latency guard
+  useEffect(() => {
+    let isMounted = true;
+    // Fast UI fallback guard: never block initial render longer than 900ms if Google Apps Script experiences latency
+    const latencyGuard = setTimeout(() => {
+      if (isMounted) {
+        setIsHydratingSheets(false);
+        setSheetsHydrationStatus((prev) => (prev === 'HYDRATING' ? 'FALLBACK' : prev));
+      }
+    }, 900);
+
+    Promise.all([
+      googleSheetsPersistence.getMenu(),
+      googleSheetsPersistence.flushOfflineQueue()
+    ])
+      .then(() => {
+        if (isMounted) {
+          setSheetsHydrationStatus('SYNCED');
+          setIsHydratingSheets(false);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setSheetsHydrationStatus('FALLBACK');
+          setIsHydratingSheets(false);
+        }
+      })
+      .finally(() => {
+        clearTimeout(latencyGuard);
+      });
+
+    return () => {
+      isMounted = false;
+      clearTimeout(latencyGuard);
+    };
+  }, []);
 
   // Listen to custom navigation events (e.g. from clock-in redirect)
   useEffect(() => {
@@ -88,7 +129,14 @@ const MainAppContent: React.FC = () => {
   });
   const [isPublicPOS, setIsPublicPOS] = useState<boolean>(() => {
     const params = new URLSearchParams(window.location.search);
-    return params.get('mode') === 'pos' || params.get('view') === 'pos' || params.get('pos') === '1';
+    const pathname = window.location.pathname.toLowerCase();
+    return (
+      params.get('mode') === 'pos' ||
+      params.get('view') === 'pos' ||
+      params.get('pos') === '1' ||
+      pathname === '/pos' ||
+      pathname.startsWith('/pos/')
+    );
   });
 
   // Sync active view on user login (if clocked in)
@@ -188,13 +236,22 @@ const MainAppContent: React.FC = () => {
     }
   }, []);
 
-  if (isLoading) {
+  if (isLoading || isHydratingSheets) {
     return (
-      <div className="min-h-screen bg-[#f8fafc] flex flex-col items-center justify-center text-[#111111]">
-        <Loader2 className="w-8 h-8 animate-spin text-[#111111] mb-3" />
-        <p className="text-xs text-zinc-500 font-mono tracking-wide">
-          Verifying Tagpuan ERP Session...
-        </p>
+      <div className="min-h-screen bg-[#f8fafc] flex flex-col items-center justify-center text-[#111111] p-4">
+        <div className="bg-white border border-zinc-200 rounded-2xl shadow-sm px-6 py-5 flex flex-col items-center max-w-sm w-full text-center">
+          <div className="w-10 h-10 rounded-xl bg-[#111111] text-[#CDEBC5] flex items-center justify-center mb-3 shadow-xs">
+            <Loader2 className="w-5 h-5 animate-spin" />
+          </div>
+          <p className="text-xs font-extrabold uppercase tracking-wider text-zinc-900">
+            Tagpuan Enterprise ERP
+          </p>
+          <p className="text-[11px] text-zinc-500 font-mono mt-1">
+            {isHydratingSheets
+              ? 'Hydrating Menu & Orders from Google Sheets API...'
+              : 'Verifying Tagpuan ERP Session...'}
+          </p>
+        </div>
       </div>
     );
   }
@@ -221,7 +278,9 @@ const MainAppContent: React.FC = () => {
           </button>
         </div>
         <div className="flex-1">
-          <POSView />
+          <ErrorBoundary fallbackTitle="POS Terminal Recovery">
+            <POSView />
+          </ErrorBoundary>
         </div>
       </div>
     );
@@ -233,15 +292,17 @@ const MainAppContent: React.FC = () => {
     const urlBranchId = params.get('branch_id') || params.get('branchId');
     const urlTable = params.get('table') || params.get('table_number') || params.get('tableNumber');
     return (
-      <KioskView
-        initialBranchId={urlBranchId || user?.branch_id || undefined}
-        initialTable={urlTable || undefined}
-        onExitToERP={() => {
-          setIsPublicKiosk(false);
-          window.history.replaceState({}, document.title, window.location.pathname);
-          setActiveView('dashboard');
-        }}
-      />
+      <ErrorBoundary fallbackTitle="Self-Ordering Kiosk Recovery">
+        <KioskView
+          initialBranchId={urlBranchId || user?.branch_id || undefined}
+          initialTable={urlTable || undefined}
+          onExitToERP={() => {
+            setIsPublicKiosk(false);
+            window.history.replaceState({}, document.title, window.location.pathname);
+            setActiveView('dashboard');
+          }}
+        />
+      </ErrorBoundary>
     );
   }
 
@@ -275,10 +336,12 @@ const MainAppContent: React.FC = () => {
   // Full-screen Kiosk mode within ERP session
   if (activeView === 'kiosk') {
     return (
-      <KioskView
-        initialBranchId={user?.branch_id || undefined}
-        onExitToERP={() => setActiveView('pos')}
-      />
+      <ErrorBoundary fallbackTitle="Self-Ordering Kiosk Recovery">
+        <KioskView
+          initialBranchId={user?.branch_id || undefined}
+          onExitToERP={() => setActiveView('pos')}
+        />
+      </ErrorBoundary>
     );
   }
 

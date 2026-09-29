@@ -4,6 +4,7 @@ import { useAuth } from '../../context/AuthContext';
 import { DenominationCalculator, calculateTotalCash, DENOMINATION_VALUES } from './DenominationCalculator';
 import { ShiftRemittanceTicketModal } from './ShiftRemittanceTicketModal';
 import { ErrorBoundary } from '../common/ErrorBoundary';
+import { googleSheetsPersistence } from '../../lib/googleSheetsPersistence';
 import {
   Banknote,
   Upload,
@@ -278,6 +279,21 @@ const CashRemittanceTabInner: React.FC<CashRemittanceTabProps> = ({ branches }) 
       if (!response.ok) {
         throw new Error(data.error || 'Failed to submit cash remittance.');
       }
+
+      // Sync daily remittance, cashier name, cash variance, and expenses to Google Sheets Tab 3 ("Sales_Audit")
+      void googleSheetsPersistence.logSalesAuditToSheet({
+        daily_remittance: remittedAmount,
+        remitted_amount: remittedAmount,
+        cashier_name: user?.full_name || 'Cashier',
+        cash_variance: liveVariance,
+        variance: liveVariance,
+        expenses: activeSelectedShift?.cash_expenses || 0,
+        branch_name: activeSelectedShift?.branch_name || user?.branch_name || 'Tagpuan Branch',
+        expected_cash: activeSelectedShift?.expected_cash || remittedAmount,
+        actual_cash_counted: remittedAmount,
+        status: 'SUBMITTED',
+        notes: submitNotes.trim() || `Proof: ${proofType}`
+      });
 
       setIsSubmitModalOpen(false);
       setSelectedShiftId('');

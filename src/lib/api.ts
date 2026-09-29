@@ -62,6 +62,8 @@ import {
   DailySalesReport
 } from '../types/index';
 import { supabaseAdapter, isSupabaseConfigured } from './supabase';
+import { googleSheetsPersistence } from './googleSheetsPersistence';
+import { handleApiFallback } from './fallbackStore';
 
 const API_BASE = '/api';
 
@@ -135,33 +137,43 @@ class ApiClient {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
-    const response = await fetch(`${API_BASE}${endpoint}`, {
-      ...options,
-      headers
-    });
+    try {
+      const response = await fetch(`${API_BASE}${endpoint}`, {
+        ...options,
+        headers
+      });
 
-    const contentType = response.headers.get('content-type') || '';
-    let data: any;
+      const contentType = response.headers.get('content-type') || '';
+      let data: any;
 
-    if (contentType.includes('application/json')) {
-      data = await response.json();
-    } else {
-      const text = await response.text();
-      try {
-        data = JSON.parse(text);
-      } catch {
-        if (!response.ok) {
-          throw new Error(`Server returned HTTP ${response.status} (${response.statusText}): ${text.slice(0, 150)}`);
+      if (contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        try {
+          data = JSON.parse(text);
+        } catch {
+          const fallbackData = await handleApiFallback(`${API_BASE}${endpoint}`, options);
+          return fallbackData as T;
         }
-        throw new Error(`Unexpected non-JSON response from ${endpoint} (HTTP ${response.status}): ${text.slice(0, 150)}`);
       }
-    }
 
-    if (!response.ok) {
-      throw new Error(data?.error || data?.message || `Request failed with status ${response.status}`);
-    }
+      if (!response.ok) {
+        if (response.status >= 500 || response.status === 404) {
+          const fallbackData = await handleApiFallback(`${API_BASE}${endpoint}`, options);
+          return fallbackData as T;
+        }
+        throw new Error(data?.error || data?.message || `Request failed with status ${response.status}`);
+      }
 
-    return data as T;
+      return data as T;
+    } catch (err: any) {
+      if (err?.message && !err.message.includes('Failed to fetch') && !err.message.includes('NetworkError') && !err.message.includes('Load failed')) {
+        throw err;
+      }
+      const fallbackData = await handleApiFallback(`${API_BASE}${endpoint}`, options);
+      return fallbackData as T;
+    }
   }
 
   // --- AUTH ---
@@ -497,6 +509,18 @@ class ApiClient {
       method: 'POST',
       body: JSON.stringify(data)
     });
+    if (res.product) {
+      void googleSheetsPersistence.upsertMenuInventoryItem({
+        'Item Name': res.product.product_name,
+        'Price': res.product.selling_price,
+        'Category': res.product.category,
+        'Stock Level': 100,
+        'Recipe Ingredients': res.product.description || 'Standard Recipe',
+        'Item Code': res.product.product_code,
+        'Unit': 'serving',
+        'Record Type': 'MENU_ITEM'
+      });
+    }
     return res.product;
   }
 
@@ -505,6 +529,17 @@ class ApiClient {
       method: 'PUT',
       body: JSON.stringify(data)
     });
+    if (res.product) {
+      void googleSheetsPersistence.upsertMenuInventoryItem({
+        'Item Name': res.product.product_name,
+        'Price': res.product.selling_price,
+        'Category': res.product.category,
+        'Recipe Ingredients': res.product.description || 'Standard Recipe',
+        'Item Code': res.product.product_code,
+        'Unit': 'serving',
+        'Record Type': 'MENU_ITEM'
+      });
+    }
     return res.product;
   }
 
@@ -844,17 +879,41 @@ class ApiClient {
 
   // --- STOCK MOVEMENTS (PHASE 3) ---
   public async stockIn(data: { branch_id: string; ingredient_id: string; quantity: number; reason?: string }): Promise<{ inventory: BranchInventory; transaction: InventoryTransaction }> {
-    return this.request('/inventory/stock-in', {
+    const res = await this.request<{ inventory: BranchInventory; transaction: InventoryTransaction }>('/inventory/stock-in', {
       method: 'POST',
       body: JSON.stringify(data)
     });
+    if (res.inventory) {
+      void googleSheetsPersistence.upsertMenuInventoryItem({
+        'Item Name': res.inventory.ingredient_name,
+        'Price': res.inventory.cost_price,
+        'Category': res.inventory.category,
+        'Stock Level': res.inventory.current_stock,
+        'Item Code': res.inventory.item_code || res.inventory.ingredient_id,
+        'Unit': res.inventory.unit,
+        'Record Type': 'INGREDIENT'
+      });
+    }
+    return res;
   }
 
   public async adjustStock(data: { branch_id: string; ingredient_id: string; new_stock: number; reason: string }): Promise<{ inventory: BranchInventory; transaction: InventoryTransaction }> {
-    return this.request('/inventory/adjust', {
+    const res = await this.request<{ inventory: BranchInventory; transaction: InventoryTransaction }>('/inventory/adjust', {
       method: 'POST',
       body: JSON.stringify(data)
     });
+    if (res.inventory) {
+      void googleSheetsPersistence.upsertMenuInventoryItem({
+        'Item Name': res.inventory.ingredient_name,
+        'Price': res.inventory.cost_price,
+        'Category': res.inventory.category,
+        'Stock Level': res.inventory.current_stock,
+        'Item Code': res.inventory.item_code || res.inventory.ingredient_id,
+        'Unit': res.inventory.unit,
+        'Record Type': 'INGREDIENT'
+      });
+    }
+    return res;
   }
 
   public async recordRejectedStock(data: { branch_id: string; ingredient_id: string; rejected_quantity: number; reason: string }): Promise<{ transaction: InventoryTransaction }> {
@@ -1394,10 +1453,14 @@ class ApiClient {
   }
 
   public async submitKioskOrder(input: CreateKioskOrderInput): Promise<{ order: Order }> {
-    return this.request<{ order: Order }>('/kiosk/orders', {
+    const res = await this.request<{ order: Order }>('/kiosk/orders', {
       method: 'POST',
       body: JSON.stringify(input)
     });
+    if (res.order) {
+      void googleSheetsPersistence.logOrderToSheet(res.order, false);
+    }
+    return res;
   }
 
   public async getKioskOrderByNumber(orderNumber: string): Promise<{ order: Order }> {
@@ -1419,10 +1482,14 @@ class ApiClient {
     customer_phone?: string;
     idempotency_key?: string;
   }): Promise<{ success: boolean; order: Order; receipt: any }> {
-    return this.request<{ success: boolean; order: Order; receipt: any }>(`/kiosk/orders/${encodeURIComponent(orderId)}/pay`, {
+    const res = await this.request<{ success: boolean; order: Order; receipt: any }>(`/kiosk/orders/${encodeURIComponent(orderId)}/pay`, {
       method: 'POST',
       body: JSON.stringify(data)
     });
+    if (res.order) {
+      void googleSheetsPersistence.logOrderToSheet(res.order, true);
+    }
+    return res;
   }
 
   public async getSalesSummary(filters?: {

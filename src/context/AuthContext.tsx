@@ -25,12 +25,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const refreshUser = useCallback(async () => {
+    const timeoutGuard = setTimeout(() => {
+      setIsLoading(false);
+    }, 1500);
     try {
       const currentUser = await api.getCurrentUser();
       setUser(currentUser);
     } catch {
       setUser(null);
     } finally {
+      clearTimeout(timeoutGuard);
       setIsLoading(false);
     }
   }, []);

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Order, Branch, KitchenStats } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { getAuthToken } from '../../lib/api';
+import { googleSheetsPersistence } from '../../lib/googleSheetsPersistence';
 import { KDSOrderCard } from './KDSOrderCard';
 import { KDSHistoryModal } from './KDSHistoryModal';
 import { kitchenAudio } from '../../utils/kitchenAudio';
@@ -345,6 +346,11 @@ export const KDSView: React.FC = () => {
         }
       }
     } catch (e) {}
+
+    // 4. Sync kitchen status update to Google Sheets Tab 1 ("Orders_Log")
+    void googleSheetsPersistence.updateOrderStatusInSheet(orderNumber || orderId, {
+      kitchen_status: newStatus
+    });
   };
 
   // NEW -> PREPARING

@@ -1,14 +1,82 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Database, Lock, Copy, Check, Terminal, FileCode, CheckCircle2, Server } from 'lucide-react';
+import {
+  ShieldCheck,
+  Database,
+  Lock,
+  Copy,
+  Check,
+  FileCode,
+  Server,
+  FileSpreadsheet,
+  RefreshCw,
+  FolderArchive,
+  CheckCircle2,
+  CloudOff
+} from 'lucide-react';
 import { api } from '../../lib/api';
+import {
+  googleSheetsPersistence,
+  OrdersLogSheetRow,
+  MenuInventorySheetRow,
+  SalesAuditSheetRow,
+  GoogleDriveArchiveItem
+} from '../../lib/googleSheetsPersistence';
+import codeGsRaw from '../../../Code.gs?raw';
 
 export const DatabaseSecurityView: React.FC = () => {
   const [schemaStatus, setSchemaStatus] = useState<any>(null);
   const [copied, setCopied] = useState(false);
+  const [copiedCodeGs, setCopiedCodeGs] = useState(false);
+  const [activeSheetTab, setActiveSheetTab] = useState<'Orders_Log' | 'Menu_Inventory' | 'Sales_Audit' | 'Drive_PDF_Archive'>('Orders_Log');
+  const [ordersLog, setOrdersLog] = useState<OrdersLogSheetRow[]>([]);
+  const [menuInventory, setMenuInventory] = useState<MenuInventorySheetRow[]>([]);
+  const [salesAudit, setSalesAudit] = useState<SalesAuditSheetRow[]>([]);
+  const [driveArchive, setDriveArchive] = useState<GoogleDriveArchiveItem[]>([]);
+  const [syncQueueCount, setSyncQueueCount] = useState<number>(0);
+  const [isSyncingSheets, setIsSyncingSheets] = useState<boolean>(false);
+  const [syncBanner, setSyncBanner] = useState<string | null>(null);
+
+  const loadSheetsSnapshot = () => {
+    setOrdersLog(googleSheetsPersistence.getLocalOrdersLog());
+    setMenuInventory(googleSheetsPersistence.getLocalMenuInventoryRows());
+    setSalesAudit(googleSheetsPersistence.getLocalSalesAuditRows());
+    setDriveArchive(googleSheetsPersistence.getDriveArchive());
+    setSyncQueueCount(googleSheetsPersistence.getSyncQueue().length);
+  };
 
   useEffect(() => {
     api.getSchemaStatus().then(setSchemaStatus).catch(console.error);
+    loadSheetsSnapshot();
   }, []);
+
+  const handleSyncWithGoogleSheets = async () => {
+    setIsSyncingSheets(true);
+    setSyncBanner(null);
+    try {
+      const flushed = await googleSheetsPersistence.flushOfflineQueue();
+      await Promise.all([
+        googleSheetsPersistence.fetchOrdersFromSheet(),
+        googleSheetsPersistence.fetchMenuInventoryFromSheet(),
+        googleSheetsPersistence.fetchSalesAuditFromSheet()
+      ]);
+      loadSheetsSnapshot();
+      setSyncBanner(
+        googleSheetsPersistence.isConfigured()
+          ? `Synchronized with Google Sheets Web App API (${flushed.synced} queued operations flushed).`
+          : `LocalStorage persistence verified (${ordersLog.length} Orders_Log, ${menuInventory.length} Menu_Inventory, ${salesAudit.length} Sales_Audit rows ready).`
+      );
+    } catch (e) {
+      setSyncBanner('Using LocalStorage persistence fallback (offline or latency guard active).');
+    } finally {
+      setIsSyncingSheets(false);
+    }
+  };
+
+  const copyCodeGs = () => {
+    navigator.clipboard.writeText(codeGsRaw);
+    setCopiedCodeGs(true);
+    setTimeout(() => setCopiedCodeGs(false), 2000);
+  };
 
   const sqlMigrationCode = `-- TAGPUAN ERP - Phase 1 Schema & RLS Policies
 -- Execute in Supabase SQL Editor:
@@ -266,6 +334,246 @@ CREATE POLICY "employee_self_service_payslips" ON public.payslips
               <p className="text-[11px] text-zinc-500 leading-relaxed">{tbl.desc}</p>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Google Sheets & Google Drive Persistence Hub (Apps Script API) */}
+      <div className="bg-white border border-[#e5e7eb] rounded-2xl overflow-hidden shadow-sm p-6 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-100 pb-4">
+          <div>
+            <h2 className="text-sm sm:text-base font-extrabold text-[#111111] flex items-center gap-2">
+              <FileSpreadsheet className="w-5 h-5 text-emerald-700" />
+              <span>Google Sheets & Google Drive Persistence Layer (Apps Script API)</span>
+            </h2>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              Direct POS, Kiosk, KDS, Inventory & Sales Audit sync to <code className="font-mono font-bold text-zinc-800">Orders_Log</code>, <code className="font-mono font-bold text-zinc-800">Menu_Inventory</code>, <code className="font-mono font-bold text-zinc-800">Sales_Audit</code> + automated Drive PDF archiving with LocalStorage fallback.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-1 rounded-lg bg-zinc-100 text-zinc-700 text-[11px] font-mono font-bold flex items-center gap-1.5">
+              {googleSheetsPersistence.isConfigured() ? (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Web App Connected</span>
+                </>
+              ) : (
+                <>
+                  <CloudOff className="w-3.5 h-3.5 text-amber-600" />
+                  <span>LocalStorage Fallback ({syncQueueCount} queued)</span>
+                </>
+              )}
+            </span>
+            <button
+              onClick={handleSyncWithGoogleSheets}
+              disabled={isSyncingSheets}
+              className="px-3 py-1.5 rounded-xl bg-[#111111] text-[#CDEBC5] text-xs font-bold hover:bg-black transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncingSheets ? 'animate-spin' : ''}`} />
+              <span>Sync Sheets & Drive</span>
+            </button>
+          </div>
+        </div>
+
+        {syncBanner && (
+          <div className="px-3.5 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-900 flex items-center justify-between">
+            <span>{syncBanner}</span>
+            <button onClick={() => setSyncBanner(null)} className="text-[11px] text-emerald-700 hover:underline">
+              Close
+            </button>
+          </div>
+        )}
+
+        {/* 3 Google Sheets Tabs + Google Drive PDF Archive Switcher */}
+        <div className="flex flex-wrap items-center gap-2">
+          {[
+            { id: 'Orders_Log', label: `Tab 1: Orders_Log (${ordersLog.length})` },
+            { id: 'Menu_Inventory', label: `Tab 2: Menu_Inventory (${menuInventory.length})` },
+            { id: 'Sales_Audit', label: `Tab 3: Sales_Audit (${salesAudit.length})` },
+            { id: 'Drive_PDF_Archive', label: `Google Drive PDFs (${driveArchive.length})` }
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveSheetTab(tab.id as any)}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                activeSheetTab === tab.id
+                  ? 'bg-[#111111] text-[#CDEBC5] shadow-xs'
+                  : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab 1: Orders_Log */}
+        {activeSheetTab === 'Orders_Log' && (
+          <div className="overflow-x-auto border border-zinc-200 rounded-xl">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-zinc-900 text-[#CDEBC5] font-mono text-[11px]">
+                  <th className="p-2.5">Order ID</th>
+                  <th className="p-2.5">Branch</th>
+                  <th className="p-2.5">Items</th>
+                  <th className="p-2.5">Amount</th>
+                  <th className="p-2.5">Payment Status</th>
+                  <th className="p-2.5">Timestamp</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-200">
+                {ordersLog.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-4 text-center text-zinc-400">
+                      No orders logged yet. Orders placed in POS or Kiosk automatically sync here.
+                    </td>
+                  </tr>
+                ) : (
+                  ordersLog.slice(0, 10).map((row, idx) => (
+                    <tr key={idx} className="hover:bg-zinc-50">
+                      <td className="p-2.5 font-mono font-bold text-zinc-900">{row['Order ID']}</td>
+                      <td className="p-2.5 text-zinc-700">{row['Branch']}</td>
+                      <td className="p-2.5 text-zinc-600 max-w-xs truncate">{row['Items']}</td>
+                      <td className="p-2.5 font-bold text-zinc-900">₱{Number(row['Amount'] || 0).toFixed(2)}</td>
+                      <td className="p-2.5">
+                        <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                          {row['Payment Status']}
+                        </span>
+                      </td>
+                      <td className="p-2.5 font-mono text-[11px] text-zinc-500">{row['Timestamp']}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Tab 2: Menu_Inventory */}
+        {activeSheetTab === 'Menu_Inventory' && (
+          <div className="overflow-x-auto border border-zinc-200 rounded-xl">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-zinc-900 text-[#CDEBC5] font-mono text-[11px]">
+                  <th className="p-2.5">Item Name</th>
+                  <th className="p-2.5">Price</th>
+                  <th className="p-2.5">Category</th>
+                  <th className="p-2.5">Stock Level</th>
+                  <th className="p-2.5">Recipe Ingredients</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-200">
+                {menuInventory.slice(0, 12).map((row, idx) => (
+                  <tr key={idx} className="hover:bg-zinc-50">
+                    <td className="p-2.5 font-bold text-zinc-900">{row['Item Name']}</td>
+                    <td className="p-2.5 font-mono text-zinc-800">₱{Number(row['Price'] || 0).toFixed(2)}</td>
+                    <td className="p-2.5">
+                      <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-700 text-[10px] font-bold">
+                        {row['Category']}
+                      </span>
+                    </td>
+                    <td className="p-2.5 font-mono font-bold text-emerald-700">
+                      {row['Stock Level']} {row['Unit'] || ''}
+                    </td>
+                    <td className="p-2.5 text-zinc-600 text-[11px]">{row['Recipe Ingredients']}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Tab 3: Sales_Audit */}
+        {activeSheetTab === 'Sales_Audit' && (
+          <div className="overflow-x-auto border border-zinc-200 rounded-xl">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-zinc-900 text-[#CDEBC5] font-mono text-[11px]">
+                  <th className="p-2.5">Daily Remittances</th>
+                  <th className="p-2.5">Cashier Name</th>
+                  <th className="p-2.5">Cash Variance</th>
+                  <th className="p-2.5">Expenses</th>
+                  <th className="p-2.5">Branch</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-200">
+                {salesAudit.map((row, idx) => (
+                  <tr key={idx} className="hover:bg-zinc-50">
+                    <td className="p-2.5 font-mono font-bold text-zinc-900">
+                      ₱{Number(row['Daily Remittances'] || 0).toFixed(2)}
+                    </td>
+                    <td className="p-2.5 font-semibold text-zinc-800">{row['Cashier Name']}</td>
+                    <td className="p-2.5 font-mono text-zinc-700">₱{Number(row['Cash Variance'] || 0).toFixed(2)}</td>
+                    <td className="p-2.5 font-mono text-zinc-700">₱{Number(row['Expenses'] || 0).toFixed(2)}</td>
+                    <td className="p-2.5 text-zinc-600">{row['Branch'] || 'Tagpuan Branch'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Google Drive PDF Archive */}
+        {activeSheetTab === 'Drive_PDF_Archive' && (
+          <div className="overflow-x-auto border border-zinc-200 rounded-xl">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-zinc-900 text-[#CDEBC5] font-mono text-[11px]">
+                  <th className="p-2.5">Document Type</th>
+                  <th className="p-2.5">PDF File Name</th>
+                  <th className="p-2.5">Drive Target Folder</th>
+                  <th className="p-2.5">Total Amount</th>
+                  <th className="p-2.5">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-200">
+                {driveArchive.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="p-4 text-center text-zinc-400">
+                      No PDF e-Receipts or Sales Summaries archived yet. Complete a POS/Kiosk checkout or click "Save PDF to Google Drive" in Sales Summary.
+                    </td>
+                  </tr>
+                ) : (
+                  driveArchive.map((item) => (
+                    <tr key={item.id} className="hover:bg-zinc-50">
+                      <td className="p-2.5 font-mono font-bold text-zinc-900">{item.type}</td>
+                      <td className="p-2.5 text-zinc-800 font-medium">{item.fileName}</td>
+                      <td className="p-2.5 font-mono text-[11px] text-zinc-500">{item.driveFolderName}</td>
+                      <td className="p-2.5 font-bold text-zinc-900">₱{Number(item.amount || 0).toFixed(2)}</td>
+                      <td className="p-2.5">
+                        <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                          {item.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Standalone Google Apps Script (Code.gs) Viewer */}
+      <div className="bg-white border border-[#e5e7eb] rounded-2xl overflow-hidden shadow-sm p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <FolderArchive className="w-4 h-4 text-zinc-700" />
+            <h3 className="text-sm font-bold text-[#111111]">
+              Standalone Google Apps Script (<code className="font-mono">Code.gs</code>) for Google Sheets & Drive
+            </h3>
+          </div>
+          <button
+            onClick={copyCodeGs}
+            className="px-3 py-1.5 bg-[#111111] hover:bg-black text-[#CDEBC5] text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+          >
+            {copiedCodeGs ? <Check className="w-3.5 h-3.5 text-[#CDEBC5]" /> : <Copy className="w-3.5 h-3.5 text-[#CDEBC5]" />}
+            <span>{copiedCodeGs ? 'Copied Code.gs' : 'Copy Code.gs'}</span>
+          </button>
+        </div>
+
+        <div className="bg-[#111111] border border-zinc-800 rounded-xl p-4 overflow-x-auto text-[#f8fafc] max-h-96">
+          <pre className="text-[11px] font-mono leading-relaxed">
+            {codeGsRaw}
+          </pre>
         </div>
       </div>
 

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { CashierSession } from '../../types';
+import { googleSheetsPersistence } from '../../lib/googleSheetsPersistence';
 import { X, Lock, Unlock, DollarSign, Clock, AlertCircle, Loader2 } from 'lucide-react';
 
 interface CashierSessionModalProps {
@@ -86,6 +87,22 @@ export const CashierSessionModal: React.FC<CashierSessionModalProps> = ({
       if (!response.ok) {
         throw new Error(data.error || 'Failed to close cashier shift session.');
       }
+
+      const counted = parseFloat(closingCash) || 0;
+      const expected = (session.opening_cash || 0) + (session.cash_payments || session.total_sales || 0);
+      // Trigger Google Apps Script POST action "saveAudit" for sales closing report
+      void googleSheetsPersistence.saveAudit({
+        daily_remittance: counted,
+        closing_cash: counted,
+        expected_cash: expected,
+        actual_cash_counted: counted,
+        cash_variance: counted - expected,
+        cashier_name: session.cashier_name || 'Cashier',
+        branch_name: branchName,
+        report_type: 'SALES_CLOSING_REPORT',
+        status: 'CLOSED',
+        notes: notes.trim() || `POS Shift Sales Closing Report (Total Sales: ₱${(session.total_sales || 0).toFixed(2)})`
+      });
 
       onSessionChange();
       onClose();

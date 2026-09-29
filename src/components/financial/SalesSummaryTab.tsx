@@ -3,6 +3,7 @@ import { SalesSummaryMetrics, Branch } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { TodaysSoldMenuItemsTable } from './TodaysSoldMenuItemsTable';
 import { ErrorBoundary } from '../common/ErrorBoundary';
+import { googleSheetsPersistence } from '../../lib/googleSheetsPersistence';
 import {
   TrendingUp,
   DollarSign,
@@ -23,7 +24,9 @@ import {
   Scale,
   Gift,
   CheckCircle2,
-  Building2
+  Building2,
+  FileDown,
+  Loader2
 } from 'lucide-react';
 
 interface SalesSummaryTabProps {
@@ -35,6 +38,8 @@ const SalesSummaryTabInner: React.FC<SalesSummaryTabProps> = ({ branches }) => {
   const [metrics, setMetrics] = useState<SalesSummaryMetrics | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isSavingDrivePdf, setIsSavingDrivePdf] = useState(false);
+  const [drivePdfNotice, setDrivePdfNotice] = useState<string | null>(null);
 
   // Filter state - for Branch Manager automatically default to the manager's assigned branchId
   const [datePreset, setDatePreset] = useState<string>('today');
@@ -151,8 +156,48 @@ const SalesSummaryTabInner: React.FC<SalesSummaryTabProps> = ({ branches }) => {
     document.body.removeChild(link);
   };
 
+  const handleSavePdfToGoogleDrive = async () => {
+    if (!metrics) return;
+    try {
+      setIsSavingDrivePdf(true);
+      setDrivePdfNotice(null);
+      const branchObj = branches.find(b => b.id === selectedBranchId);
+      const branchLabel = branchObj ? branchObj.name : (selectedBranchId ? selectedBranchId : 'All_Branches');
+      const archiveItem = await googleSheetsPersistence.generateAndSaveSalesSummaryToDrive(
+        metrics,
+        branchLabel,
+        datePreset || 'today',
+        { downloadLocally: true }
+      );
+      setDrivePdfNotice(
+        archiveItem.status === 'SAVED_TO_DRIVE'
+          ? `PDF Sales Summary saved directly to Google Drive (${archiveItem.driveFolderName}/${archiveItem.fileName})`
+          : `PDF Sales Summary downloaded & queued in LocalStorage for Google Drive sync (${archiveItem.fileName})`
+      );
+    } catch (err: any) {
+      console.warn('Error saving Sales Summary PDF to Google Drive:', err);
+    } finally {
+      setIsSavingDrivePdf(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {drivePdfNotice && (
+        <div className="px-4 py-3 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between text-xs font-bold text-emerald-900">
+          <span className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{drivePdfNotice}</span>
+          </span>
+          <button
+            onClick={() => setDrivePdfNotice(null)}
+            className="text-[11px] text-emerald-700 hover:underline ml-4"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Filter Control Bar */}
       <div className="bg-white p-4 rounded-2xl border border-zinc-200 shadow-xs space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -191,6 +236,14 @@ const SalesSummaryTabInner: React.FC<SalesSummaryTabProps> = ({ branches }) => {
               title="Refresh Data"
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={handleSavePdfToGoogleDrive}
+              disabled={!metrics || isLoading || isSavingDrivePdf}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#111111] text-[#CDEBC5] text-xs font-bold hover:bg-black transition shadow-xs cursor-pointer disabled:opacity-60"
+            >
+              {isSavingDrivePdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileDown className="w-3.5 h-3.5" />}
+              <span>Save PDF to Google Drive</span>
             </button>
             <button
               onClick={handleExportCSV}
