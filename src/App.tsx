@@ -41,7 +41,40 @@ const MainAppContent: React.FC = () => {
   const { user, isLoading, isOwner, isManager } = useAuth();
   const { isDecoyActive, setIsDecoyActive } = useBranch();
   const { isClockedIn, activeShift, attendanceChecked, isLoadingShift, refreshShiftStatus, setReturnTargetView } = useShift();
-  const [activeView, setActiveView] = useState<string>('dashboard');
+  const [activeView, setActiveView] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const savedUserRaw = localStorage.getItem('tagpuan_fallback_user');
+        const savedUser = savedUserRaw ? JSON.parse(savedUserRaw) : null;
+        const role = savedUser?.role;
+        const savedRoleView = localStorage.getItem(`tagpuan_active_view_${role || 'user'}`);
+
+        if (role === 'CASHIER') {
+          return (savedRoleView && ['pos', 'financial', 'loyalty', 'attendance', 'notifications'].includes(savedRoleView))
+            ? savedRoleView
+            : 'pos';
+        }
+        if (role === 'KITCHEN' || role === 'CREW') {
+          return (savedRoleView && ['kds', 'attendance', 'notifications'].includes(savedRoleView))
+            ? savedRoleView
+            : 'kds';
+        }
+        if (role === 'WAREHOUSEMAN') {
+          return (savedRoleView && ['warehouse', 'requests', 'attendance', 'notifications'].includes(savedRoleView))
+            ? savedRoleView
+            : 'warehouse';
+        }
+        if (role === 'MANAGER') {
+          return (savedRoleView && !['master-control', 'security', 'users'].includes(savedRoleView))
+            ? savedRoleView
+            : 'dashboard';
+        }
+        const generic = localStorage.getItem('tagpuan_active_view');
+        if (generic && !['master-control', 'security'].includes(generic)) return generic;
+      } catch {}
+    }
+    return 'dashboard';
+  });
   const [isCreateUserModalOpen, setIsCreateUserModalOpen] = useState(false);
   const [resetToken, setResetToken] = useState<string | null>(null);
   const [accessDeniedNotice, setAccessDeniedNotice] = useState<string | null>(null);
@@ -138,6 +171,66 @@ const MainAppContent: React.FC = () => {
       pathname.startsWith('/pos/')
     );
   });
+
+  const isOwnerOrAdmin =
+    isOwner ||
+    user?.role === 'OWNER' ||
+    (user?.role as string) === 'ADMIN' ||
+    (user?.email && (
+      user.email.toLowerCase() === 'admin@tagpuan.ph' ||
+      user.email.toLowerCase() === 'owner@tagpuan.ph' ||
+      user.email.toLowerCase() === 'janzenmarkglori@gmail.com'
+    ));
+
+  // Role-based view authorization checkers
+  const isViewAllowedForUser = (view: string, role?: string): boolean => {
+    if (isOwnerOrAdmin || role === 'OWNER' || (role as string) === 'ADMIN') return true;
+    if (role === 'MANAGER') {
+      return [
+        'dashboard', 'reports', 'ai-command', 'requests', 'inventory',
+        'pos', 'loyalty', 'kiosk', 'products', 'employees', 'attendance',
+        'payroll', 'branches', 'audit', 'notifications', 'financial'
+      ].includes(view);
+    }
+    if (role === 'CASHIER') {
+      // Cashier: strictly POS Terminal, Orders, Cash Remittance, Attendance, Loyalty
+      return ['pos', 'financial', 'loyalty', 'attendance', 'notifications'].includes(view);
+    }
+    if (role === 'KITCHEN' || role === 'CREW') {
+      // Kitchen Staff: strictly KDS (Kitchen Display System) view only, plus Attendance
+      return ['kds', 'attendance', 'notifications'].includes(view);
+    }
+    if (role === 'WAREHOUSEMAN') {
+      return ['warehouse', 'requests', 'attendance', 'notifications'].includes(view);
+    }
+    return ['dashboard', 'attendance', 'notifications'].includes(view);
+  };
+
+  const getDefaultViewForUser = (role?: string): string => {
+    if (isOwnerOrAdmin || role === 'OWNER' || (role as string) === 'ADMIN' || role === 'MANAGER') return 'dashboard';
+    if (role === 'CASHIER') return 'pos';
+    if (role === 'KITCHEN' || role === 'CREW') return 'kds';
+    if (role === 'WAREHOUSEMAN') return 'warehouse';
+    return 'dashboard';
+  };
+
+  // Strictly enforce role-based active view on mount, reload, or user switching
+  useEffect(() => {
+    if (!user) return;
+    if (!isViewAllowedForUser(activeView, user.role)) {
+      const targetView = getDefaultViewForUser(user.role);
+      setActiveView(targetView);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`tagpuan_active_view_${user.role}`, targetView);
+        localStorage.setItem('tagpuan_active_view', targetView);
+      }
+    } else {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`tagpuan_active_view_${user.role}`, activeView);
+        localStorage.setItem('tagpuan_active_view', activeView);
+      }
+    }
+  }, [user?.id, user?.role, user?.email, activeView]);
 
   // Sync active view on user login (if clocked in)
   useEffect(() => {
@@ -347,9 +440,26 @@ const MainAppContent: React.FC = () => {
 
   // Render view based on active tab and role permissions
   const renderCurrentView = () => {
+    // Immediate fallback guard if unauthorized view is loaded
+    if (user && !isViewAllowedForUser(activeView, user.role)) {
+      if (user.role === 'KITCHEN' || user.role === 'CREW') {
+        return <KDSView />;
+      }
+      if (user.role === 'CASHIER') {
+        return <POSView />;
+      }
+      if (user.role === 'WAREHOUSEMAN') {
+        return <WarehouseDeliveryView />;
+      }
+      if (user.role === 'MANAGER') {
+        return <ManagerDashboard setActiveView={setActiveView} />;
+      }
+      return <OperationalDashboard setActiveView={setActiveView} />;
+    }
+
     switch (activeView) {
       case 'dashboard':
-        if (isOwner) {
+        if (isOwnerOrAdmin) {
           return (
             <OwnerDashboard
               setActiveView={setActiveView}
@@ -363,10 +473,26 @@ const MainAppContent: React.FC = () => {
         if (isManager) {
           return <ManagerDashboard setActiveView={setActiveView} />;
         }
+        if (user.role === 'CASHIER') {
+          return <POSView />;
+        }
+        if (user.role === 'KITCHEN' || user.role === 'CREW') {
+          return <KDSView />;
+        }
+        if (user.role === 'WAREHOUSEMAN') {
+          return <WarehouseDeliveryView />;
+        }
         return <OperationalDashboard setActiveView={setActiveView} />;
 
       case 'master-control':
-        return isOwner ? <MasterControlCenter /> : <OperationalDashboard setActiveView={setActiveView} />;
+        if (!isOwnerOrAdmin) {
+          if (user?.role === 'CASHIER') return <POSView />;
+          if (user?.role === 'KITCHEN' || user?.role === 'CREW') return <KDSView />;
+          if (user?.role === 'WAREHOUSEMAN') return <WarehouseDeliveryView />;
+          if (user?.role === 'MANAGER') return <ManagerDashboard setActiveView={setActiveView} />;
+          return <OperationalDashboard setActiveView={setActiveView} />;
+        }
+        return <MasterControlCenter />;
 
       case 'reports':
         return (
@@ -648,6 +774,13 @@ const MainAppContent: React.FC = () => {
         return <PayrollView />;
 
       case 'users':
+        if (!isOwnerOrAdmin) {
+          if (user?.role === 'CASHIER') return <POSView />;
+          if (user?.role === 'KITCHEN' || user?.role === 'CREW') return <KDSView />;
+          if (user?.role === 'WAREHOUSEMAN') return <WarehouseDeliveryView />;
+          if (user?.role === 'MANAGER') return <ManagerDashboard setActiveView={setActiveView} />;
+          return <OperationalDashboard setActiveView={setActiveView} />;
+        }
         return (
           <UserManagementView
             isCreateModalOpen={isCreateUserModalOpen}
@@ -665,13 +798,17 @@ const MainAppContent: React.FC = () => {
         return <NotificationsView />;
 
       case 'security':
-        if (isOwner) {
-          return <DatabaseSecurityView />;
+        if (!isOwnerOrAdmin) {
+          if (user?.role === 'CASHIER') return <POSView />;
+          if (user?.role === 'KITCHEN' || user?.role === 'CREW') return <KDSView />;
+          if (user?.role === 'WAREHOUSEMAN') return <WarehouseDeliveryView />;
+          if (user?.role === 'MANAGER') return <ManagerDashboard setActiveView={setActiveView} />;
+          return <OperationalDashboard setActiveView={setActiveView} />;
         }
-        return <OperationalDashboard />;
+        return <DatabaseSecurityView />;
 
       default:
-        if (isOwner) {
+        if (isOwnerOrAdmin) {
           return (
             <OwnerDashboard
               setActiveView={setActiveView}
@@ -682,10 +819,19 @@ const MainAppContent: React.FC = () => {
             />
           );
         }
+        if (user?.role === 'CASHIER') {
+          return <POSView />;
+        }
+        if (user?.role === 'KITCHEN' || user?.role === 'CREW') {
+          return <KDSView />;
+        }
+        if (user?.role === 'WAREHOUSEMAN') {
+          return <WarehouseDeliveryView />;
+        }
         if (isManager) {
           return <ManagerDashboard setActiveView={setActiveView} />;
         }
-        return <OperationalDashboard />;
+        return <OperationalDashboard setActiveView={setActiveView} />;
     }
   };
 

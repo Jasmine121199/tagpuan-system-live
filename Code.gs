@@ -22,12 +22,13 @@
 var TAB_ORDERS_LOG = 'Orders_Log';
 var TAB_MENU_INVENTORY = 'Menu_Inventory';
 var TAB_SALES_AUDIT = 'Sales_Audit';
+var TAB_USERS_PROFILES = 'Users_Profiles';
 var DEFAULT_DRIVE_FOLDER_NAME = 'Tagpuan_ERP_Drive_Archive';
 
 /**
- * Handles HTTP GET requests from Tagpuan ERP (POS, Kiosk, KDS, Inventory, Sales Audit)
+ * Handles HTTP GET requests from Tagpuan ERP (POS, Kiosk, KDS, Inventory, Sales Audit, Users)
  * Query parameters supported:
- * - action: 'getMenu' | 'GET_ALL' | 'GET_ORDERS' | 'GET_MENU_INVENTORY' | 'GET_SALES_AUDIT' | 'PING'
+ * - action: 'getMenu' | 'GET_ALL' | 'GET_ORDERS' | 'GET_MENU_INVENTORY' | 'GET_SALES_AUDIT' | 'GET_USERS' | 'PING'
  * - branch: optional branch name or ID filter
  */
 function doGet(e) {
@@ -77,7 +78,15 @@ function doGet(e) {
       });
     }
 
-    // Default: GET_ALL returns all 3 tabs in one round-trip for low-latency hydration
+    if (action === 'GET_USERS' || action === 'GETUSERS' || action === 'GET_USERS_PROFILES') {
+      return jsonResponse_({
+        success: true,
+        users_profiles: readTabAsObjects_(ss.getSheetByName(TAB_USERS_PROFILES), ''),
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Default: GET_ALL returns all tabs in one round-trip for low-latency hydration
     var allMenuRows = readTabAsObjects_(ss.getSheetByName(TAB_MENU_INVENTORY), '');
     return jsonResponse_({
       success: true,
@@ -85,6 +94,7 @@ function doGet(e) {
       orders_log: readTabAsObjects_(ss.getSheetByName(TAB_ORDERS_LOG), branchFilter),
       menu_inventory: allMenuRows,
       sales_audit: readTabAsObjects_(ss.getSheetByName(TAB_SALES_AUDIT), branchFilter),
+      users_profiles: readTabAsObjects_(ss.getSheetByName(TAB_USERS_PROFILES), ''),
       timestamp: new Date().toISOString()
     });
   } catch (err) {
@@ -192,6 +202,16 @@ function doPost(e) {
       });
     }
 
+    if (action === 'UPSERT_USER' || action === 'CREATE_USER' || action === 'UPDATE_USER') {
+      var userResult = upsertUserRow_(ss.getSheetByName(TAB_USERS_PROFILES), payload.user || payload.profile || payload.data || payload);
+      return jsonResponse_({
+        success: true,
+        action: action,
+        user: userResult,
+        timestamp: new Date().toISOString()
+      });
+    }
+
     if (action === 'BATCH_SYNC') {
       var operations = payload.operations || [];
       var results = [];
@@ -209,6 +229,8 @@ function doPost(e) {
           results.push(deductInventoryFromOrder_(ss.getSheetByName(TAB_MENU_INVENTORY), opPayload.items || []));
         } else if (opType === 'SAVEAUDIT' || opType === 'SAVE_AUDIT' || opType === 'LOG_SALES_AUDIT') {
           results.push(appendSalesAuditRow_(ss.getSheetByName(TAB_SALES_AUDIT), opPayload.audit || opPayload.data || opPayload));
+        } else if (opType === 'UPSERT_USER' || opType === 'CREATE_USER' || opType === 'UPDATE_USER') {
+          results.push(upsertUserRow_(ss.getSheetByName(TAB_USERS_PROFILES), opPayload.user || opPayload.profile || opPayload.data || opPayload));
         } else if (opType === 'SAVE_PDF_TO_DRIVE') {
           results.push(savePdfToDriveFolder_(opPayload.data || opPayload));
         }
@@ -379,6 +401,118 @@ function ensureTabsExist_(ss) {
       'Opening shift balanced cash remittance'
     ]);
   }
+
+  // 4. Tab 4: "Users_Profiles" (User ID, Email, Full Name, Role, Branch, Branch ID, Kiosk PIN, Status, Updated At)
+  var usersSheet = ss.getSheetByName(TAB_USERS_PROFILES);
+  if (!usersSheet) {
+    usersSheet = ss.insertSheet(TAB_USERS_PROFILES);
+    var userHeaders = [
+      'User ID',
+      'Email',
+      'Full Name',
+      'Role',
+      'Branch',
+      'Branch ID',
+      'Kiosk PIN',
+      'Status',
+      'Updated At'
+    ];
+    usersSheet.appendRow(userHeaders);
+    styleHeaderRow_(usersSheet, userHeaders.length);
+
+    var seedUsers = [
+      ['usr-owner-master', 'janzenmarkglori@gmail.com', 'Janzen Mark Glori (Master Owner)', 'OWNER', 'All Branches (Global Access)', '', '8888', 'ACTIVE', new Date().toISOString()],
+      ['usr-owner-default', 'owner@tagpuan.ph', 'Tagpuan Master Owner', 'OWNER', 'All Branches (Global Access)', '', '8888', 'ACTIVE', new Date().toISOString()],
+      ['usr-admin', 'admin@tagpuan.ph', 'System Administrator', 'OWNER', 'All Branches (Global Access)', '', '8888', 'ACTIVE', new Date().toISOString()],
+      ['usr-cashier-narra', 'cashier.narra@tagpuan.ph', 'Angela Reyes (Cashier)', 'CASHIER', 'Tagpuan - Narra Branch', 'c561fe5a-c31c-4657-b040-562004c9daba', '1234', 'ACTIVE', new Date().toISOString()],
+      ['usr-cashier-emergency', 'cashier@tagpuan.ph', 'Tagpuan Cashier', 'CASHIER', 'Tagpuan - Narra Branch', 'c561fe5a-c31c-4657-b040-562004c9daba', '1234', 'ACTIVE', new Date().toISOString()],
+      ['usr-crew-narra', 'crew.narra@tagpuan.ph', 'Marco Villanueva (Kitchen Crew)', 'KITCHEN', 'Tagpuan - Narra Branch', 'c561fe5a-c31c-4657-b040-562004c9daba', '1234', 'ACTIVE', new Date().toISOString()],
+      ['usr-kitchen-emergency', 'kitchen@tagpuan.ph', 'Tagpuan Kitchen Staff', 'KITCHEN', 'Tagpuan - Narra Branch', 'c561fe5a-c31c-4657-b040-562004c9daba', '1234', 'ACTIVE', new Date().toISOString()],
+      ['usr-manager-narra', 'manager.narra@tagpuan.ph', 'Roberto "Bob" Mendoza', 'MANAGER', 'Tagpuan - Narra Branch', 'c561fe5a-c31c-4657-b040-562004c9daba', '1001', 'ACTIVE', new Date().toISOString()]
+    ];
+
+    for (var u = 0; u < seedUsers.length; u++) {
+      usersSheet.appendRow(seedUsers[u]);
+    }
+  }
+}
+
+/**
+ * Upserts a User Profile in Tab 4: "Users_Profiles"
+ * Columns: User ID | Email | Full Name | Role | Branch | Branch ID | Kiosk PIN | Status | Updated At
+ */
+function upsertUserRow_(sheet, data) {
+  if (!sheet) return { success: false, error: 'Users_Profiles sheet not found' };
+  var userId = data.id || data['User ID'] || ('usr-' + new Date().getTime());
+  var email = (data.email || data['Email'] || '').trim().toLowerCase();
+  var fullName = data.full_name || data['Full Name'] || 'Tagpuan Staff';
+  var role = (data.role || data['Role'] || 'CREW').toUpperCase();
+  var branch = data.branch_name || data['Branch'] || 'Tagpuan - Narra Branch';
+  var branchId = data.branch_id || data['Branch ID'] || '';
+  var kioskPin = data.kiosk_pin || data['Kiosk PIN'] || '';
+  var status = data.is_active === false || data['Status'] === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE';
+  var updatedAt = new Date().toISOString();
+
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    var range = sheet.getRange(2, 1, lastRow - 1, 9);
+    var rows = range.getValues();
+    for (var i = 0; i < rows.length; i++) {
+      var rowUserId = String(rows[i][0]).trim();
+      var rowEmail = String(rows[i][1]).trim().toLowerCase();
+      if (rowUserId === String(userId) || (email && rowEmail === email)) {
+        var rowIndex = i + 2;
+        sheet.getRange(rowIndex, 1, 1, 9).setValues([[
+          rowUserId || userId,
+          email || rowEmail,
+          fullName,
+          role,
+          branch,
+          branchId,
+          kioskPin,
+          status,
+          updatedAt
+        ]]);
+        return {
+          id: rowUserId || userId,
+          email: email || rowEmail,
+          full_name: fullName,
+          role: role,
+          branch_name: branch,
+          branch_id: branchId,
+          kiosk_pin: kioskPin,
+          is_active: status === 'ACTIVE',
+          updated: true,
+          row: rowIndex
+        };
+      }
+    }
+  }
+
+  sheet.appendRow([
+    userId,
+    email,
+    fullName,
+    role,
+    branch,
+    branchId,
+    kioskPin,
+    status,
+    updatedAt
+  ]);
+
+  return {
+    id: userId,
+    email: email,
+    full_name: fullName,
+    role: role,
+    branch_name: branch,
+    branch_id: branchId,
+    kiosk_pin: kioskPin,
+    is_active: status === 'ACTIVE',
+    inserted: true,
+    row: sheet.getLastRow()
+  };
 }
 
 function styleHeaderRow_(sheet, colCount) {

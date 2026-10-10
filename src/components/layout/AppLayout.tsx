@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
-import { LayoutDashboard, Users, Building2, FileText, Bell } from 'lucide-react';
+import { LayoutDashboard, Users, Building2, FileText, Bell, ChefHat, ShoppingCart, Banknote, Clock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { useBranch } from '../../context/BranchContext';
@@ -17,10 +17,13 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   activeView,
   setActiveView
 }) => {
-  const { isOwner, isManager } = useAuth();
+  const { user, isOwner, isManager } = useAuth();
   const { toggleDecoy } = useBranch();
   const { unreadCount } = useNotifications();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const isKitchen = user?.role === 'KITCHEN' || user?.role === 'CREW';
+  const isCashier = user?.role === 'CASHIER';
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-[#1a1a1a] flex flex-col antialiased">
@@ -94,48 +97,103 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         aria-label="Mobile Navigation"
         className="lg:hidden fixed bottom-0 inset-x-0 bg-white/95 backdrop-blur-lg border-t border-[#e5e7eb] px-2 py-1.5 flex items-center justify-around z-30 shadow-lg"
       >
-        <button
-          onClick={() => setActiveView('dashboard')}
-          className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${
-            activeView === 'dashboard' ? 'bg-[#CDEBC5] text-[#111111]' : 'text-zinc-500 hover:text-zinc-800'
-          }`}
-        >
-          <LayoutDashboard className="w-5 h-5 mb-0.5" />
-          <span>Dashboard</span>
-        </button>
+        {isKitchen ? (
+          <>
+            <button
+              onClick={() => setActiveView('kds')}
+              className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${
+                activeView === 'kds' ? 'bg-[#CDEBC5] text-[#111111]' : 'text-zinc-500 hover:text-zinc-800'
+              }`}
+            >
+              <ChefHat className="w-5 h-5 mb-0.5" />
+              <span>KDS</span>
+            </button>
+            <button
+              onClick={() => setActiveView('attendance')}
+              className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${
+                activeView === 'attendance' ? 'bg-[#CDEBC5] text-[#111111]' : 'text-zinc-500 hover:text-zinc-800'
+              }`}
+            >
+              <Clock className="w-5 h-5 mb-0.5" />
+              <span>Attendance</span>
+            </button>
+          </>
+        ) : isCashier ? (
+          <>
+            <button
+              onClick={() => setActiveView('pos')}
+              className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${
+                activeView === 'pos' ? 'bg-[#CDEBC5] text-[#111111]' : 'text-zinc-500 hover:text-zinc-800'
+              }`}
+            >
+              <ShoppingCart className="w-5 h-5 mb-0.5" />
+              <span>POS</span>
+            </button>
+            <button
+              onClick={() => setActiveView('financial')}
+              className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${
+                activeView === 'financial' ? 'bg-[#CDEBC5] text-[#111111]' : 'text-zinc-500 hover:text-zinc-800'
+              }`}
+            >
+              <Banknote className="w-5 h-5 mb-0.5" />
+              <span>Remittance</span>
+            </button>
+            <button
+              onClick={() => setActiveView('attendance')}
+              className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${
+                activeView === 'attendance' ? 'bg-[#CDEBC5] text-[#111111]' : 'text-zinc-500 hover:text-zinc-800'
+              }`}
+            >
+              <Clock className="w-5 h-5 mb-0.5" />
+              <span>Attendance</span>
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={() => setActiveView('dashboard')}
+              className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${
+                activeView === 'dashboard' ? 'bg-[#CDEBC5] text-[#111111]' : 'text-zinc-500 hover:text-zinc-800'
+              }`}
+            >
+              <LayoutDashboard className="w-5 h-5 mb-0.5" />
+              <span>Dashboard</span>
+            </button>
 
-        {(isOwner || isManager) && (
-          <button
-            onClick={() => setActiveView('users')}
-            className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${
-              activeView === 'users' ? 'bg-[#CDEBC5] text-[#111111]' : 'text-zinc-500 hover:text-zinc-800'
-            }`}
-          >
-            <Users className="w-5 h-5 mb-0.5" />
-            <span>{isOwner ? 'Users' : 'Staff'}</span>
-          </button>
-        )}
+            {(isOwner || isManager) && (
+              <button
+                onClick={() => setActiveView('users')}
+                className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${
+                  activeView === 'users' ? 'bg-[#CDEBC5] text-[#111111]' : 'text-zinc-500 hover:text-zinc-800'
+                }`}
+              >
+                <Users className="w-5 h-5 mb-0.5" />
+                <span>{isOwner ? 'Users' : 'Staff'}</span>
+              </button>
+            )}
 
-        <button
-          onClick={() => setActiveView('branches')}
-          className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${
-            activeView === 'branches' ? 'bg-[#CDEBC5] text-[#111111]' : 'text-zinc-500 hover:text-zinc-800'
-          }`}
-        >
-          <Building2 className="w-5 h-5 mb-0.5" />
-          <span>Branches</span>
-        </button>
+            <button
+              onClick={() => setActiveView('branches')}
+              className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${
+                activeView === 'branches' ? 'bg-[#CDEBC5] text-[#111111]' : 'text-zinc-500 hover:text-zinc-800'
+              }`}
+            >
+              <Building2 className="w-5 h-5 mb-0.5" />
+              <span>Branches</span>
+            </button>
 
-        {(isOwner || isManager) && (
-          <button
-            onClick={() => setActiveView('audit')}
-            className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${
-              activeView === 'audit' ? 'bg-[#CDEBC5] text-[#111111]' : 'text-zinc-500 hover:text-zinc-800'
-            }`}
-          >
-            <FileText className="w-5 h-5 mb-0.5" />
-            <span>Audit</span>
-          </button>
+            {(isOwner || isManager) && (
+              <button
+                onClick={() => setActiveView('audit')}
+                className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${
+                  activeView === 'audit' ? 'bg-[#CDEBC5] text-[#111111]' : 'text-zinc-500 hover:text-zinc-800'
+                }`}
+              >
+                <FileText className="w-5 h-5 mb-0.5" />
+                <span>Audit</span>
+              </button>
+            )}
+          </>
         )}
 
         <button

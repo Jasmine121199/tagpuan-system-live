@@ -223,15 +223,41 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLaunchKiosk, onLaunchPOS
             <div className="space-y-1.5">
               <div 
                 onClick={() => {
-                  setEmail('janzenmarkglori@gmail.com');
+                  setEmail('owner@tagpuan.ph');
                   setPassword('TagpuanStaff2026!');
                 }}
-                className="p-2.5 rounded-xl bg-[#f8fafc] border border-[#e2e8f0] hover:border-zinc-400 cursor-pointer transition text-[11px] font-mono text-zinc-700 flex items-center justify-between group shadow-sm"
+                className="p-2.5 rounded-xl bg-[#f8fafc] border border-emerald-200 hover:border-emerald-400 cursor-pointer transition text-[11px] font-mono text-zinc-700 flex items-center justify-between group shadow-sm"
               >
                 <div>
-                  <span className="text-[#111111] font-bold">Owner:</span> janzenmarkglori@gmail.com
+                  <span className="text-emerald-900 font-bold">Owner:</span> owner@tagpuan.ph
                 </div>
-                <span className="text-zinc-400 group-hover:text-zinc-700 font-sans font-medium text-[10px] bg-white px-2 py-0.5 rounded border border-[#e2e8f0]">Auto-fill</span>
+                <span className="text-emerald-700 group-hover:text-emerald-900 font-sans font-medium text-[10px] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Owner Access</span>
+              </div>
+
+              <div 
+                onClick={() => {
+                  setEmail('admin@tagpuan.ph');
+                  setPassword('TagpuanStaff2026!');
+                }}
+                className="p-2.5 rounded-xl bg-[#f8fafc] border border-blue-200 hover:border-blue-400 cursor-pointer transition text-[11px] font-mono text-zinc-700 flex items-center justify-between group shadow-sm"
+              >
+                <div>
+                  <span className="text-blue-900 font-bold">Admin:</span> admin@tagpuan.ph
+                </div>
+                <span className="text-blue-700 group-hover:text-blue-900 font-sans font-medium text-[10px] bg-blue-50 px-2 py-0.5 rounded border border-blue-200">Admin Access</span>
+              </div>
+
+              <div 
+                onClick={() => {
+                  setEmail('cashier.narra@tagpuan.ph');
+                  setPassword('TagpuanStaff2026!');
+                }}
+                className="p-2.5 rounded-xl bg-[#f8fafc] border border-amber-200 hover:border-amber-400 cursor-pointer transition text-[11px] font-mono text-zinc-700 flex items-center justify-between group shadow-sm"
+              >
+                <div>
+                  <span className="text-amber-900 font-bold">Cashier:</span> cashier.narra@tagpuan.ph
+                </div>
+                <span className="text-amber-700 group-hover:text-amber-900 font-sans font-medium text-[10px] bg-amber-50 px-2 py-0.5 rounded border border-amber-200">POS Access</span>
               </div>
 
               <div 
@@ -239,12 +265,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLaunchKiosk, onLaunchPOS
                   setEmail('crew.narra@tagpuan.ph');
                   setPassword('TagpuanStaff2026!');
                 }}
-                className="p-2.5 rounded-xl bg-[#f8fafc] border border-amber-200 hover:border-amber-400 cursor-pointer transition text-[11px] font-mono text-zinc-700 flex items-center justify-between group shadow-sm"
+                className="p-2.5 rounded-xl bg-[#f8fafc] border border-rose-200 hover:border-rose-400 cursor-pointer transition text-[11px] font-mono text-zinc-700 flex items-center justify-between group shadow-sm"
               >
                 <div>
-                  <span className="text-amber-800 font-bold">Crew (KDS):</span> crew.narra@tagpuan.ph
+                  <span className="text-rose-900 font-bold">KDS Kitchen:</span> crew.narra@tagpuan.ph
                 </div>
-                <span className="text-amber-700 group-hover:text-amber-900 font-sans font-medium text-[10px] bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Auto-fill Crew</span>
+                <span className="text-rose-700 group-hover:text-rose-900 font-sans font-medium text-[10px] bg-rose-50 px-2 py-0.5 rounded border border-rose-200">KDS Access</span>
               </div>
             </div>
           </div>

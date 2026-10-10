@@ -807,39 +807,70 @@ class TagpuanDatabase {
     // Phase 10: Ensure loyalty seeds exist
     this.seedPhase10LoyaltyData();
 
-    // Auto-purge default trial owner if custom master owner (e.g. janzenmarkglori@gmail.com) exists
-    this.purgeDefaultTrialOwnerIfNewOwnerExists();
+    // Emergency accounts are permanently preserved
+    this.seedEmergencyMasterAccounts();
   }
 
   public purgeDefaultTrialOwnerIfNewOwnerExists(): void {
-    const hasCustomOwner = Array.from(this.profiles.values()).some(
-      p => p.role === 'OWNER' && (p.email.toLowerCase() === 'janzenmarkglori@gmail.com' || p.email.toLowerCase() !== 'owner@tagpuan.ph')
-    );
+    // Preserved for emergency login and switching - no purge
+  }
 
-    if (hasCustomOwner) {
-      const trialOwner = Array.from(this.profiles.values()).find(
-        p => p.email.toLowerCase() === 'owner@tagpuan.ph'
-      );
-      if (trialOwner) {
-        const trialId = trialOwner.id;
-        this.profiles.delete(trialId);
-        this.credentials.delete(trialId);
+  public seedEmergencyMasterAccounts(): void {
+    const now = new Date().toISOString();
+    const branchList = Array.from(this.branches.values());
+    const defaultBranch = branchList[0] || null;
 
-        for (const [empId, emp] of this.employees.entries()) {
-          if (emp.user_id === trialId || (emp.email && emp.email.toLowerCase() === 'owner@tagpuan.ph')) {
-            this.employees.delete(empId);
-          }
-        }
+    const emergencyAccounts = [
+      { email: 'owner@tagpuan.ph', name: 'Tagpuan Master Owner', role: 'OWNER' as UserRole, branchId: null, pin: '8888' },
+      { email: 'admin@tagpuan.ph', name: 'System Administrator (Admin)', role: 'OWNER' as UserRole, branchId: null, pin: '8888' },
+      { email: 'cashier.narra@tagpuan.ph', name: 'Angela Reyes (Cashier)', role: 'CASHIER' as UserRole, branchId: defaultBranch?.id || null, pin: '1234' },
+      { email: 'cashier@tagpuan.ph', name: 'Tagpuan Emergency Cashier', role: 'CASHIER' as UserRole, branchId: defaultBranch?.id || null, pin: '1234' },
+      { email: 'crew.narra@tagpuan.ph', name: 'Marco Villanueva (Kitchen Crew)', role: 'KITCHEN' as UserRole, branchId: defaultBranch?.id || null, pin: '1234' },
+      { email: 'kitchen@tagpuan.ph', name: 'Tagpuan Emergency Kitchen Staff', role: 'KITCHEN' as UserRole, branchId: defaultBranch?.id || null, pin: '1234' },
+      { email: 'manager@tagpuan.ph', name: 'Tagpuan Emergency Manager', role: 'MANAGER' as UserRole, branchId: defaultBranch?.id || null, pin: '1001' }
+    ];
 
-        for (const [token, session] of this.sessions.entries()) {
-          if (session.userId === trialId || session.email.toLowerCase() === 'owner@tagpuan.ph') {
-            this.sessions.delete(token);
-          }
-        }
+    emergencyAccounts.forEach(acc => {
+      let profile = this.getProfileByEmail(acc.email);
+      if (!profile) {
+        const userId = crypto.randomUUID();
+        const authUserId = crypto.randomUUID();
+        const salt = this.generateSalt();
+        const passwordHash = this.hashPassword('TagpuanStaff2026!', salt);
 
-        this.saveSnapshot();
+        profile = {
+          id: userId,
+          auth_user_id: authUserId,
+          full_name: acc.name,
+          email: acc.email,
+          role: acc.role,
+          branch_id: acc.branchId,
+          branch_name: acc.role === 'OWNER' ? 'All Branches (Global Access)' : (defaultBranch?.name || 'Assigned Branch'),
+          kiosk_pin: acc.pin,
+          is_pin_configured: true,
+          is_active: true,
+          created_at: now,
+          updated_at: now
+        };
+
+        const cred: UserCredential = {
+          id: userId,
+          auth_user_id: authUserId,
+          email: acc.email,
+          password_hash: passwordHash,
+          salt,
+          reset_token: null,
+          reset_token_expires: null
+        };
+
+        this.profiles.set(userId, profile);
+        this.credentials.set(userId, cred);
+      } else {
+        profile.role = acc.role;
+        profile.is_active = true;
+        this.profiles.set(profile.id, profile);
       }
-    }
+    });
   }
 
   private saveSnapshot(): void {
@@ -13962,6 +13993,7 @@ class TagpuanDatabase {
       user_id: actorId,
       user_email: actorEmail,
       role: actorRole,
+      branch_id: null,
       action: 'SYSTEM_INITIALIZATION_PRODUCTION_RESET',
       entity_type: 'SYSTEM',
       entity_id: 'SYSTEM_FACTORY_RESET',

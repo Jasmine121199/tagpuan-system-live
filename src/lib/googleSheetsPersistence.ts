@@ -6,7 +6,9 @@ import {
   BranchInventory,
   CashRemittance,
   ReceiptData,
-  SalesSummaryMetrics
+  SalesSummaryMetrics,
+  Profile,
+  UserRole
 } from '../types/index';
 import {
   INITIAL_PRODUCTS_DATA,
@@ -25,6 +27,8 @@ export const PRODUCTION_GOOGLE_SCRIPT_URL =
 //   - GET  action="getMenu"     : Hydrate POS & Kiosk menu items on initial load
 //   - POST action="createOrder" : Trigger when orders are placed via POS or Kiosk
 //   - POST action="saveAudit"   : Send cash remittance & sales closing reports
+//   - GET  action="GET_USERS"   : Fetch user accounts & staff profiles
+//   - POST action="UPSERT_USER" : Sync new/updated user profile to Users_Profiles tab
 // Offline Fallback:
 //   - IndexedDB ("TagpuanOfflineDB") + localStorage with automatic online sync
 // ============================================================================
@@ -67,6 +71,18 @@ export interface SalesAuditSheetRow {
   'Report Type'?: 'CASH_REMITTANCE' | 'SALES_CLOSING_REPORT';
 }
 
+export interface UserProfileSheetRow {
+  'User ID': string;
+  'Email': string;
+  'Full Name': string;
+  'Role': UserRole;
+  'Branch': string;
+  'Branch ID'?: string;
+  'Kiosk PIN'?: string;
+  'Status': string;
+  'Updated At': string;
+}
+
 export interface GoogleDriveArchiveItem {
   id: string;
   type: 'E_RECEIPT' | 'SALES_SUMMARY';
@@ -93,7 +109,7 @@ export interface GoogleAppsScriptConfig {
 
 export interface QueuedSheetMutation {
   id: string;
-  action: 'createOrder' | 'saveAudit' | string;
+  action: 'createOrder' | 'saveAudit' | 'UPSERT_USER' | string;
   data: any;
   queuedAt: string;
 }
@@ -103,21 +119,155 @@ const STORAGE_KEYS = {
   ORDERS_LOG: 'tagpuan_gs_orders_log',
   MENU_INVENTORY: 'tagpuan_gs_menu_inventory',
   SALES_AUDIT: 'tagpuan_gs_sales_audit',
+  USERS_PROFILES: 'tagpuan_gs_users_profiles',
   DRIVE_ARCHIVE: 'tagpuan_gs_drive_archive',
   SYNC_QUEUE: 'tagpuan_gs_sync_queue',
   LAST_SYNC: 'tagpuan_gs_last_sync'
 };
 
 // ============================================================================
+// PRE-SEEDED EMERGENCY MASTER ACCOUNTS (ALWAYS WORK WITHOUT LOCKOUT)
+// ============================================================================
+export const EMERGENCY_MASTER_USERS: Profile[] = [
+  {
+    id: 'usr-owner-master',
+    auth_user_id: 'auth-owner-master',
+    full_name: 'Janzen Mark Glori (Master Owner)',
+    email: 'janzenmarkglori@gmail.com',
+    role: 'OWNER',
+    branch_id: null,
+    branch_name: 'All Branches (Global Access)',
+    kiosk_pin: '8888',
+    is_pin_configured: true,
+    is_active: true,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'usr-owner-default',
+    auth_user_id: 'auth-owner-default',
+    full_name: 'Tagpuan Master Owner',
+    email: 'owner@tagpuan.ph',
+    role: 'OWNER',
+    branch_id: null,
+    branch_name: 'All Branches (Global Access)',
+    kiosk_pin: '8888',
+    is_pin_configured: true,
+    is_active: true,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'usr-admin-system',
+    auth_user_id: 'auth-admin-system',
+    full_name: 'System Administrator (Admin)',
+    email: 'admin@tagpuan.ph',
+    role: 'OWNER',
+    branch_id: null,
+    branch_name: 'All Branches (Global Access)',
+    kiosk_pin: '8888',
+    is_pin_configured: true,
+    is_active: true,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'usr-cashier-narra',
+    auth_user_id: 'auth-cashier-narra',
+    full_name: 'Angela Reyes (Cashier)',
+    email: 'cashier.narra@tagpuan.ph',
+    role: 'CASHIER',
+    branch_id: 'c561fe5a-c31c-4657-b040-562004c9daba',
+    branch_name: 'Tagpuan - Narra Branch',
+    kiosk_pin: '1234',
+    is_pin_configured: true,
+    is_active: true,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'usr-cashier-emergency',
+    auth_user_id: 'auth-cashier-emergency',
+    full_name: 'Tagpuan Emergency Cashier',
+    email: 'cashier@tagpuan.ph',
+    role: 'CASHIER',
+    branch_id: 'c561fe5a-c31c-4657-b040-562004c9daba',
+    branch_name: 'Tagpuan - Narra Branch',
+    kiosk_pin: '1234',
+    is_pin_configured: true,
+    is_active: true,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'usr-crew-narra',
+    auth_user_id: 'auth-crew-narra',
+    full_name: 'Marco Villanueva (Kitchen Crew)',
+    email: 'crew.narra@tagpuan.ph',
+    role: 'KITCHEN',
+    branch_id: 'c561fe5a-c31c-4657-b040-562004c9daba',
+    branch_name: 'Tagpuan - Narra Branch',
+    kiosk_pin: '1234',
+    is_pin_configured: true,
+    is_active: true,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'usr-kitchen-emergency',
+    auth_user_id: 'auth-kitchen-emergency',
+    full_name: 'Tagpuan Emergency Kitchen Staff',
+    email: 'kitchen@tagpuan.ph',
+    role: 'KITCHEN',
+    branch_id: 'c561fe5a-c31c-4657-b040-562004c9daba',
+    branch_name: 'Tagpuan - Narra Branch',
+    kiosk_pin: '1234',
+    is_pin_configured: true,
+    is_active: true,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'usr-manager-narra',
+    auth_user_id: 'auth-manager-narra',
+    full_name: 'Roberto "Bob" Mendoza (Manager)',
+    email: 'manager.narra@tagpuan.ph',
+    role: 'MANAGER',
+    branch_id: 'c561fe5a-c31c-4657-b040-562004c9daba',
+    branch_name: 'Tagpuan - Narra Branch',
+    kiosk_pin: '1001',
+    is_pin_configured: true,
+    is_active: true,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'usr-manager-emergency',
+    auth_user_id: 'auth-manager-emergency',
+    full_name: 'Tagpuan Emergency Manager',
+    email: 'manager@tagpuan.ph',
+    role: 'MANAGER',
+    branch_id: 'c561fe5a-c31c-4657-b040-562004c9daba',
+    branch_name: 'Tagpuan - Narra Branch',
+    kiosk_pin: '1001',
+    is_pin_configured: true,
+    is_active: true,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z'
+  }
+];
+
+// ============================================================================
 // INDEXEDDB OFFLINE PERSISTENCE ENGINE
 // ============================================================================
 const IDB_NAME = 'TagpuanOfflineDB';
-const IDB_VERSION = 2;
+const IDB_VERSION = 3;
 const IDB_STORES = {
   ORDERS: 'offline_orders',
   SYNC_QUEUE: 'sync_queue',
   MENU_CACHE: 'menu_cache',
-  AUDITS: 'offline_audits'
+  AUDITS: 'offline_audits',
+  USERS: 'offline_users'
 };
 
 class IndexedDBOfflineStore {
@@ -147,6 +297,9 @@ class IndexedDBOfflineStore {
             db.createObjectStore(IDB_STORES.MENU_CACHE, { keyPath: 'itemKey' });
             if (!db.objectStoreNames.contains(IDB_STORES.AUDITS)) {
               db.createObjectStore(IDB_STORES.AUDITS, { keyPath: 'id' });
+            }
+            if (!db.objectStoreNames.contains(IDB_STORES.USERS)) {
+              db.createObjectStore(IDB_STORES.USERS, { keyPath: 'id' });
             }
           } catch (upgradeErr) {
             console.warn('[IndexedDB] Store upgrade warning:', upgradeErr);
@@ -366,6 +519,10 @@ function normalizeRemoteMenuRow(raw: any, idx: number): MenuInventorySheetRow {
 class GoogleSheetsPersistenceService {
   private isFlushing = false;
   private listenersSetup = false;
+  private inFlightGetRequests = new Map<string, Promise<any>>();
+  private memoryGetCache = new Map<string, { data: any; expiry: number }>();
+  private mutationBatchTimer: any = null;
+  private pendingBatchOperations: Array<{ action: string; data: any; resolve: (val: any) => void }> = [];
 
   constructor() {
     this.setupAutoSyncListeners();
@@ -485,68 +642,95 @@ class GoogleSheetsPersistenceService {
   }
 
   /**
-   * Low-latency GET request to Google Apps Script `doGet` with timeout & IndexedDB/LocalStorage fallback
+   * Low-latency GET request to Google Apps Script `doGet` with:
+   * 1. In-flight request deduplication (concurrent calls share 1 network request)
+   * 2. Short-term in-memory cache (15s TTL) to prevent rate limits on rapid tab switches
+   * 3. IndexedDB/LocalStorage fallback
    */
-  public async callDoGet(action: string, params: Record<string, string> = {}): Promise<any | null> {
+  public async callDoGet(
+    action: string,
+    params: Record<string, string> = {},
+    bypassCache = false
+  ): Promise<any | null> {
     const config = this.getConfig();
     if (!this.isConfigured()) return null;
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       return null;
     }
 
+    const cacheKey = `${action}_${JSON.stringify(params)}`;
+    const now = Date.now();
+
+    // Check in-memory cache
+    if (!bypassCache) {
+      const cached = this.memoryGetCache.get(cacheKey);
+      if (cached && now < cached.expiry) {
+        return cached.data;
+      }
+    }
+
+    // Check in-flight promise to avoid duplicate concurrent calls
+    if (this.inFlightGetRequests.has(cacheKey)) {
+      return this.inFlightGetRequests.get(cacheKey);
+    }
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), config.timeoutMs);
 
-    try {
-      const url = new URL(config.scriptUrl);
-      url.searchParams.set('action', action);
-      Object.entries(params).forEach(([k, v]) => {
-        if (v) url.searchParams.set(k, v);
-      });
+    const requestPromise = (async () => {
+      try {
+        const url = new URL(config.scriptUrl);
+        url.searchParams.set('action', action);
+        Object.entries(params).forEach(([k, v]) => {
+          if (v) url.searchParams.set(k, v);
+        });
 
-      const response = await fetch(url.toString(), {
-        method: 'GET',
-        mode: 'cors',
-        redirect: 'follow',
-        signal: controller.signal
-      });
-      clearTimeout(timer);
+        const response = await fetch(url.toString(), {
+          method: 'GET',
+          mode: 'cors',
+          redirect: 'follow',
+          signal: controller.signal
+        });
+        clearTimeout(timer);
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        if (data) {
+          writeLocal(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
+          this.memoryGetCache.set(cacheKey, { data, expiry: now + 15000 });
+          return data;
+        }
+        return null;
+      } catch (err) {
+        clearTimeout(timer);
+        console.warn(`[GoogleSheetsAPI:doGet] Offline or latency fallback for action="${action}":`, err);
+        return null;
+      } finally {
+        this.inFlightGetRequests.delete(cacheKey);
       }
-      const data = await response.json();
-      if (data) {
-        writeLocal(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
-        return data;
-      }
-      return null;
-    } catch (err) {
-      clearTimeout(timer);
-      console.warn(`[GoogleSheetsAPI:doGet] Offline or latency fallback for action="${action}":`, err);
-      return null;
-    }
+    })();
+
+    this.inFlightGetRequests.set(cacheKey, requestPromise);
+    return requestPromise;
   }
 
   /**
-   * Low-latency POST request to Google Apps Script `doPost`
-   * Uses Content-Type: text/plain;charset=utf-8 so browsers do not fail on OPTIONS preflight with script.google.com
+   * Direct POST request to Google Apps Script `doPost` without re-queueing
    */
-  public async callDoPost(
+  public async callDoPostDirect(
     action: string,
     payload: Record<string, any>,
-    queueOnFailure = true
+    timeoutMs = 6000
   ): Promise<any | null> {
     const config = this.getConfig();
     if (!this.isConfigured() || (typeof navigator !== 'undefined' && navigator.onLine === false)) {
-      if (queueOnFailure) {
-        this.enqueueMutation(action, payload);
-      }
       return null;
     }
 
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), config.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const response = await fetch(config.scriptUrl, {
@@ -572,23 +756,35 @@ class GoogleSheetsPersistenceService {
         writeLocal(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
         return data;
       }
-      throw new Error(data?.error || 'Google Apps Script returned unsuccessful response');
+      return null;
     } catch (err) {
       clearTimeout(timer);
-      console.warn(
-        `[GoogleSheetsAPI:doPost] Offline or latency fallback for action="${action}"; queued in IndexedDB & localStorage.`,
-        err
-      );
-      if (queueOnFailure) {
-        this.enqueueMutation(action, payload);
-      }
       return null;
     }
   }
 
   /**
-   * Flushes any offline IndexedDB & LocalStorage mutations to Google Sheets once back online.
-   * Replays individual `createOrder` and `saveAudit` actions or batches them.
+   * Low-latency POST request to Google Apps Script `doPost`
+   * Uses Content-Type: text/plain;charset=utf-8 so browsers do not fail on OPTIONS preflight with script.google.com
+   */
+  public async callDoPost(
+    action: string,
+    payload: Record<string, any>,
+    queueOnFailure = true
+  ): Promise<any | null> {
+    const res = await this.callDoPostDirect(action, payload, this.getConfig().timeoutMs);
+    if (res && res.success !== false) {
+      return res;
+    }
+    if (queueOnFailure) {
+      this.enqueueMutation(action, payload);
+    }
+    return null;
+  }
+
+  /**
+   * Flushes offline IndexedDB & LocalStorage mutations to Google Sheets using BATCH_SYNC.
+   * Batches operations in chunks of up to 10 per request to prevent hitting rate / deployment limits.
    */
   public async flushOfflineQueue(): Promise<{ synced: number; remaining: number }> {
     if (this.isFlushing) {
@@ -606,17 +802,37 @@ class GoogleSheetsPersistenceService {
     this.isFlushing = true;
     let syncedCount = 0;
     const remainingQueue: QueuedSheetMutation[] = [];
+    const BATCH_SIZE = 10;
 
     try {
-      for (const item of queue) {
-        const res = await this.callDoPost(item.action, item.data, false);
-        if (res && res.success !== false) {
-          syncedCount++;
-          await idbOfflineStore.delete(IDB_STORES.SYNC_QUEUE, item.id);
+      for (let i = 0; i < queue.length; i += BATCH_SIZE) {
+        const batch = queue.slice(i, i + BATCH_SIZE);
+        const operations = batch.map((item) => ({
+          action: item.action,
+          data: item.data
+        }));
+
+        // Send atomic BATCH_SYNC
+        const batchRes = await this.callDoPostDirect('BATCH_SYNC', { operations }, 8000);
+        if (batchRes && batchRes.success !== false) {
+          syncedCount += batch.length;
+          for (const item of batch) {
+            await idbOfflineStore.delete(IDB_STORES.SYNC_QUEUE, item.id);
+          }
         } else {
-          remainingQueue.push(item);
+          // Fallback to item-by-item processing if batch is unsupported
+          for (const item of batch) {
+            const res = await this.callDoPostDirect(item.action, item.data, 5000);
+            if (res && res.success !== false) {
+              syncedCount++;
+              await idbOfflineStore.delete(IDB_STORES.SYNC_QUEUE, item.id);
+            } else {
+              remainingQueue.push(item);
+            }
+          }
         }
       }
+
       writeLocal(STORAGE_KEYS.SYNC_QUEUE, remainingQueue);
       if (syncedCount > 0) {
         window.dispatchEvent(
@@ -1116,7 +1332,10 @@ class GoogleSheetsPersistenceService {
       daily_remittance?: number;
       cashier_name?: string;
       cash_variance?: number;
+      variance?: number;
       expenses?: number;
+      total_expenses?: number;
+      actual_cash_counted?: number;
       branch_name?: string;
       report_type?: 'CASH_REMITTANCE' | 'SALES_CLOSING_REPORT';
       total_sales?: number;
@@ -1189,7 +1408,10 @@ class GoogleSheetsPersistenceService {
       daily_remittance?: number;
       cashier_name?: string;
       cash_variance?: number;
+      variance?: number;
       expenses?: number;
+      total_expenses?: number;
+      actual_cash_counted?: number;
       branch_name?: string;
       report_type?: 'CASH_REMITTANCE' | 'SALES_CLOSING_REPORT';
     }
@@ -1470,6 +1692,158 @@ class GoogleSheetsPersistenceService {
 
     this.recordDriveArchiveItem(archiveItem);
     return archiveItem;
+  }
+
+  // ==========================================================================
+  // 5. USER MANAGEMENT & PROFILES PERSISTENCE (Tab: "Users_Profiles")
+  // ==========================================================================
+
+  /**
+   * Retrieves all user profiles merged from:
+   * 1. Emergency Pre-seeded Master Accounts (Owner, Admin, Cashier, Kitchen, Manager)
+   * 2. Local Storage cached users
+   * 3. Google Sheets "Users_Profiles" tab cached rows
+   */
+  public getStoredUsers(): Profile[] {
+    const localUsers = readLocal<Profile[]>('tagpuan_users', []);
+    const sheetUsers = readLocal<Profile[]>(STORAGE_KEYS.USERS_PROFILES, []);
+    const mergedMap = new Map<string, Profile>();
+
+    // Seed defaults first
+    EMERGENCY_MASTER_USERS.forEach((u) => {
+      mergedMap.set(u.email.toLowerCase(), u);
+    });
+
+    // Merge saved local users
+    localUsers.forEach((u) => {
+      if (u && u.email) {
+        const key = u.email.toLowerCase();
+        mergedMap.set(key, { ...(mergedMap.get(key) || {}), ...u });
+      }
+    });
+
+    // Merge Google Sheets users
+    sheetUsers.forEach((u) => {
+      if (u && u.email) {
+        const key = u.email.toLowerCase();
+        mergedMap.set(key, { ...(mergedMap.get(key) || {}), ...u });
+      }
+    });
+
+    return Array.from(mergedMap.values());
+  }
+
+  /**
+   * Synchronizes a user profile locally (LocalStorage + IndexedDB) and pushes
+   * to Google Sheets Tab 4 ("Users_Profiles") with offline queue fallback.
+   */
+  public async syncUserProfileToSheet(profile: Profile): Promise<Profile> {
+    const currentUsers = this.getStoredUsers();
+    const existingIdx = currentUsers.findIndex(
+      (u) => u.id === profile.id || u.email.toLowerCase() === profile.email.toLowerCase()
+    );
+
+    let updatedUsers: Profile[];
+    if (existingIdx >= 0) {
+      updatedUsers = [...currentUsers];
+      updatedUsers[existingIdx] = { ...updatedUsers[existingIdx], ...profile };
+    } else {
+      updatedUsers = [profile, ...currentUsers];
+    }
+
+    // Persist to local storage across primary keys
+    writeLocal('tagpuan_users', updatedUsers);
+    writeLocal('tagpuan_admin_users', updatedUsers);
+    writeLocal(STORAGE_KEYS.USERS_PROFILES, updatedUsers);
+
+    // Persist to IndexedDB
+    void idbOfflineStore.put(IDB_STORES.USERS, profile);
+
+    // Sync to Google Sheets via POST action "UPSERT_USER"
+    void this.callDoPost('UPSERT_USER', {
+      user: {
+        id: profile.id,
+        email: profile.email,
+        full_name: profile.full_name,
+        role: profile.role,
+        branch_name: profile.branch_name,
+        branch_id: profile.branch_id,
+        kiosk_pin: profile.kiosk_pin,
+        is_active: profile.is_active,
+        updated_at: profile.updated_at || new Date().toISOString()
+      }
+    });
+
+    return profile;
+  }
+
+  /**
+   * Fetches user accounts from Google Sheets Tab "Users_Profiles"
+   * and synchronizes into LocalStorage and IndexedDB.
+   */
+  public async fetchUsersFromSheet(): Promise<Profile[]> {
+    const remote = await this.callDoGet('GET_USERS');
+    const rawArray =
+      (remote && Array.isArray(remote.users_profiles) && remote.users_profiles) ||
+      (remote && Array.isArray(remote.users) && remote.users) ||
+      (remote && Array.isArray(remote.data) && remote.data) ||
+      (Array.isArray(remote) ? remote : null);
+
+    if (rawArray && rawArray.length > 0) {
+      const parsedProfiles: Profile[] = rawArray.map((r: any, idx: number) => {
+        const id = String(r['User ID'] || r.id || `usr-${idx + 1}`);
+        const email = String(r['Email'] || r.email || '').toLowerCase().trim();
+        const fullName = String(r['Full Name'] || r.full_name || 'Tagpuan Staff');
+        const role = (String(r['Role'] || r.role || 'CREW').toUpperCase() as UserRole);
+        const branchName = String(r['Branch'] || r.branch_name || 'Tagpuan - Narra Branch');
+        const branchId = r['Branch ID'] || r.branch_id || (role === 'OWNER' ? null : 'c561fe5a-c31c-4657-b040-562004c9daba');
+        const kioskPin = r['Kiosk PIN'] || r.kiosk_pin || null;
+        const isActive = String(r['Status'] || r.status || 'ACTIVE').toUpperCase() !== 'INACTIVE';
+        return {
+          id,
+          auth_user_id: `auth-${id}`,
+          full_name: fullName,
+          email,
+          role,
+          branch_id: branchId,
+          branch_name: branchName,
+          kiosk_pin: kioskPin,
+          is_pin_configured: Boolean(kioskPin),
+          is_active: isActive,
+          created_at: r['Updated At'] || new Date().toISOString(),
+          updated_at: r['Updated At'] || new Date().toISOString()
+        };
+      });
+
+      // Merge remote profiles with emergency accounts
+      const mergedMap = new Map<string, Profile>();
+      EMERGENCY_MASTER_USERS.forEach((u) => mergedMap.set(u.email.toLowerCase(), u));
+      parsedProfiles.forEach((u) => {
+        if (u.email) mergedMap.set(u.email.toLowerCase(), u);
+      });
+
+      const merged = Array.from(mergedMap.values());
+      writeLocal('tagpuan_users', merged);
+      writeLocal('tagpuan_admin_users', merged);
+      writeLocal(STORAGE_KEYS.USERS_PROFILES, merged);
+      void idbOfflineStore.putBulk(IDB_STORES.USERS, merged);
+      return merged;
+    }
+
+    // Fallback: check IndexedDB cache
+    const idbCached = await idbOfflineStore.getAll<Profile>(IDB_STORES.USERS);
+    if (idbCached && idbCached.length > 0) {
+      const mergedMap = new Map<string, Profile>();
+      EMERGENCY_MASTER_USERS.forEach((u) => mergedMap.set(u.email.toLowerCase(), u));
+      idbCached.forEach((u) => {
+        if (u && u.email) mergedMap.set(u.email.toLowerCase(), u);
+      });
+      const merged = Array.from(mergedMap.values());
+      writeLocal('tagpuan_users', merged);
+      return merged;
+    }
+
+    return this.getStoredUsers();
   }
 }
 

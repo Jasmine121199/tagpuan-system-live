@@ -18,13 +18,26 @@ export const Header: React.FC<HeaderProps> = ({
   activeView,
   setActiveView
 }) => {
-  const { user, logout, isOwner } = useAuth();
+  const { user, login, logout, isOwner } = useAuth();
   const { selectedBranchId, setSelectedBranchId, branches, toggleDecoy } = useBranch();
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [switchingUser, setSwitchingUser] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
+
+  const handleSwitchAccount = async (email: string) => {
+    setSwitchingUser(true);
+    try {
+      await login(email, 'TagpuanStaff2026!');
+      setIsUserMenuOpen(false);
+    } catch (e) {
+      console.warn('Switch account warning:', e);
+    } finally {
+      setSwitchingUser(false);
+    }
+  };
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -270,41 +283,107 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
 
               <div className="p-2 divide-y divide-[#f1f5f9]">
-                <button
-                  onClick={() => {
-                    setActiveView('notifications');
-                    setIsUserMenuOpen(false);
-                  }}
-                  className="w-full text-left px-3 py-2 text-xs text-zinc-700 hover:text-[#111111] hover:bg-[#f8fafc] rounded-lg transition flex items-center gap-2.5"
-                >
-                  <Bell className="w-4 h-4 text-zinc-500" />
-                  <span>Notification Center</span>
-                </button>
+                {/* Emergency Role Account Switcher */}
+                <div className="py-2 px-1">
+                  <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5 px-2 font-mono">
+                    Quick Switch Account
+                  </p>
+                  <div className="space-y-1">
+                    <button
+                      type="button"
+                      disabled={switchingUser || user?.email === 'owner@tagpuan.ph'}
+                      onClick={() => handleSwitchAccount('owner@tagpuan.ph')}
+                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition flex items-center justify-between ${
+                        user?.email === 'owner@tagpuan.ph'
+                          ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
+                          : 'text-zinc-700 hover:bg-zinc-100'
+                      }`}
+                    >
+                      <span className="font-bold">👑 Master Owner</span>
+                      <span className="text-[10px] text-zinc-400 font-mono">owner@</span>
+                    </button>
 
-                {isOwner && (
+                    <button
+                      type="button"
+                      disabled={switchingUser || user?.email === 'admin@tagpuan.ph'}
+                      onClick={() => handleSwitchAccount('admin@tagpuan.ph')}
+                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition flex items-center justify-between ${
+                        user?.email === 'admin@tagpuan.ph'
+                          ? 'bg-blue-50 text-blue-900 border border-blue-200'
+                          : 'text-zinc-700 hover:bg-zinc-100'
+                      }`}
+                    >
+                      <span className="font-bold">🛡️ Administrator</span>
+                      <span className="text-[10px] text-zinc-400 font-mono">admin@</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={switchingUser || user?.email === 'cashier.narra@tagpuan.ph'}
+                      onClick={() => handleSwitchAccount('cashier.narra@tagpuan.ph')}
+                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition flex items-center justify-between ${
+                        user?.email === 'cashier.narra@tagpuan.ph'
+                          ? 'bg-amber-50 text-amber-900 border border-amber-200'
+                          : 'text-zinc-700 hover:bg-zinc-100'
+                      }`}
+                    >
+                      <span className="font-bold">💵 Cashier (POS)</span>
+                      <span className="text-[10px] text-zinc-400 font-mono">cashier@</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={switchingUser || user?.email === 'crew.narra@tagpuan.ph'}
+                      onClick={() => handleSwitchAccount('crew.narra@tagpuan.ph')}
+                      className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition flex items-center justify-between ${
+                        user?.email === 'crew.narra@tagpuan.ph'
+                          ? 'bg-rose-50 text-rose-900 border border-rose-200'
+                          : 'text-zinc-700 hover:bg-zinc-100'
+                      }`}
+                    >
+                      <span className="font-bold">🍳 Kitchen (KDS)</span>
+                      <span className="text-[10px] text-zinc-400 font-mono">crew@</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="pt-1 space-y-1">
                   <button
                     onClick={() => {
-                      setActiveView('security');
+                      setActiveView('notifications');
                       setIsUserMenuOpen(false);
                     }}
                     className="w-full text-left px-3 py-2 text-xs text-zinc-700 hover:text-[#111111] hover:bg-[#f8fafc] rounded-lg transition flex items-center gap-2.5"
                   >
-                    <Shield className="w-4 h-4 text-[#166534]" />
-                    <span>Supabase RLS & Security</span>
+                    <Bell className="w-4 h-4 text-zinc-500" />
+                    <span>Notification Center</span>
                   </button>
-                )}
 
-                <button
-                  onClick={async () => {
-                    setIsUserMenuOpen(false);
-                    await logout();
-                  }}
-                  id="header-logout-btn"
-                  className="w-full text-left px-3 py-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition flex items-center gap-2.5 mt-1"
-                >
-                  <LogOut className="w-4 h-4 text-red-600" />
-                  <span>Sign Out</span>
-                </button>
+                  {isOwner && (
+                    <button
+                      onClick={() => {
+                        setActiveView('security');
+                        setIsUserMenuOpen(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs text-zinc-700 hover:text-[#111111] hover:bg-[#f8fafc] rounded-lg transition flex items-center gap-2.5"
+                    >
+                      <Shield className="w-4 h-4 text-[#166534]" />
+                      <span>Supabase RLS & Security</span>
+                    </button>
+                  )}
+
+                  <button
+                    onClick={async () => {
+                      setIsUserMenuOpen(false);
+                      await logout();
+                    }}
+                    id="header-logout-btn"
+                    className="w-full text-left px-3 py-2 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition flex items-center gap-2.5 mt-1"
+                  >
+                    <LogOut className="w-4 h-4 text-red-600" />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
               </div>
             </div>
           )}

@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../lib/api';
+import { googleSheetsPersistence } from '../../lib/googleSheetsPersistence';
 import { Profile, Branch, UserRole, CreateUserInput } from '../../types/index';
 
 interface UserManagementViewProps {
@@ -44,16 +45,7 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
 }) => {
   const { user, isOwner } = useAuth();
   const [users, setUsers] = useState<Profile[]>(() => {
-    try {
-      const saved = localStorage.getItem('tagpuan_users');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return parsed.filter((u: any) => u.email?.toLowerCase() !== 'owner@tagpuan.ph');
-        }
-      }
-    } catch (e) {}
-    return [];
+    return googleSheetsPersistence.getStoredUsers();
   });
   const [branches, setBranches] = useState<Branch[]>([]);
   const [loading, setLoading] = useState(true);
@@ -164,12 +156,9 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
       setIsCreateModalOpen(false);
 
       if (res?.profile) {
-        const nextUsers = [...users, res.profile];
+        await googleSheetsPersistence.syncUserProfileToSheet(res.profile);
+        const nextUsers = googleSheetsPersistence.getStoredUsers();
         setUsers(nextUsers);
-        try {
-          localStorage.setItem('tagpuan_users', JSON.stringify(nextUsers));
-          localStorage.setItem('tagpuan_admin_users', JSON.stringify(nextUsers));
-        } catch (e) {}
       }
       await fetchUsersAndBranches();
     } catch (err: any) {
@@ -183,6 +172,10 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     if (!isOwner) return;
     try {
       await api.toggleUserStatus(targetUser.id, !targetUser.is_active);
+      await googleSheetsPersistence.syncUserProfileToSheet({
+        ...targetUser,
+        is_active: !targetUser.is_active
+      });
       await fetchUsersAndBranches();
     } catch (err: any) {
       alert(err.message || 'Failed to update user status.');
@@ -245,6 +238,13 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     try {
       setEditLoading(true);
       await api.assignUserBranch(editingUser.id, editingUser.role === 'OWNER' ? null : editBranchId);
+      const assignedBranch = branches.find(b => b.id === editBranchId);
+      const updatedProfile: Profile = {
+        ...editingUser,
+        branch_id: editingUser.role === 'OWNER' ? null : editBranchId,
+        branch_name: editingUser.role === 'OWNER' ? 'All Branches (Global Access)' : (assignedBranch?.name || null)
+      };
+      await googleSheetsPersistence.syncUserProfileToSheet(updatedProfile);
       setEditingUser(null);
       await fetchUsersAndBranches();
     } catch (err: any) {
@@ -266,6 +266,12 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
     setResetPinError(null);
     try {
       await api.updateUserKioskPin(resetPinUser.id, cleanPin);
+      const updatedProfile: Profile = {
+        ...resetPinUser,
+        kiosk_pin: cleanPin,
+        is_pin_configured: true
+      };
+      await googleSheetsPersistence.syncUserProfileToSheet(updatedProfile);
       setResetPinUser(null);
       setResetPinValue('');
       await fetchUsersAndBranches();
@@ -278,16 +284,6 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
 
   // Filtered list
   const filteredUsers = users
-    .filter((u) => {
-      // Exclude trial owner if another owner exists
-      if (u.email?.toLowerCase() === 'owner@tagpuan.ph') {
-        const hasOtherOwner = users.some(
-          (o) => o.role === 'OWNER' && o.email?.toLowerCase() !== 'owner@tagpuan.ph'
-        );
-        if (hasOtherOwner) return false;
-      }
-      return true;
-    })
     .filter((u) => {
       const matchesSearch =
         u.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||

@@ -142,14 +142,14 @@ export const FALLBACK_USERS: Profile[] = [
     updated_at: nowIso
   },
   {
-    id: 'usr-manager-narra',
-    auth_user_id: 'auth-manager-narra',
-    full_name: 'Roberto "Bob" Mendoza',
-    email: 'manager.narra@tagpuan.ph',
-    role: 'MANAGER',
-    branch_id: FALLBACK_BRANCHES[0].id,
-    branch_name: FALLBACK_BRANCHES[0].name,
-    kiosk_pin: '1001',
+    id: 'usr-admin-system',
+    auth_user_id: 'auth-admin-system',
+    full_name: 'System Administrator (Admin)',
+    email: 'admin@tagpuan.ph',
+    role: 'OWNER',
+    branch_id: null,
+    branch_name: 'All Branches (Global Access)',
+    kiosk_pin: '8888',
     is_pin_configured: true,
     is_active: true,
     created_at: nowIso,
@@ -163,8 +163,22 @@ export const FALLBACK_USERS: Profile[] = [
     role: 'CASHIER',
     branch_id: FALLBACK_BRANCHES[0].id,
     branch_name: FALLBACK_BRANCHES[0].name,
-    kiosk_pin: null,
-    is_pin_configured: false,
+    kiosk_pin: '1234',
+    is_pin_configured: true,
+    is_active: true,
+    created_at: nowIso,
+    updated_at: nowIso
+  },
+  {
+    id: 'usr-cashier-emergency',
+    auth_user_id: 'auth-cashier-emergency',
+    full_name: 'Tagpuan Emergency Cashier',
+    email: 'cashier@tagpuan.ph',
+    role: 'CASHIER',
+    branch_id: FALLBACK_BRANCHES[0].id,
+    branch_name: FALLBACK_BRANCHES[0].name,
+    kiosk_pin: '1234',
+    is_pin_configured: true,
     is_active: true,
     created_at: nowIso,
     updated_at: nowIso
@@ -174,11 +188,53 @@ export const FALLBACK_USERS: Profile[] = [
     auth_user_id: 'auth-crew-narra',
     full_name: 'Marco Villanueva (Kitchen Crew)',
     email: 'crew.narra@tagpuan.ph',
-    role: 'CREW',
+    role: 'KITCHEN',
     branch_id: FALLBACK_BRANCHES[0].id,
     branch_name: FALLBACK_BRANCHES[0].name,
-    kiosk_pin: null,
-    is_pin_configured: false,
+    kiosk_pin: '1234',
+    is_pin_configured: true,
+    is_active: true,
+    created_at: nowIso,
+    updated_at: nowIso
+  },
+  {
+    id: 'usr-kitchen-emergency',
+    auth_user_id: 'auth-kitchen-emergency',
+    full_name: 'Tagpuan Emergency Kitchen Staff',
+    email: 'kitchen@tagpuan.ph',
+    role: 'KITCHEN',
+    branch_id: FALLBACK_BRANCHES[0].id,
+    branch_name: FALLBACK_BRANCHES[0].name,
+    kiosk_pin: '1234',
+    is_pin_configured: true,
+    is_active: true,
+    created_at: nowIso,
+    updated_at: nowIso
+  },
+  {
+    id: 'usr-manager-narra',
+    auth_user_id: 'auth-manager-narra',
+    full_name: 'Roberto "Bob" Mendoza (Manager)',
+    email: 'manager.narra@tagpuan.ph',
+    role: 'MANAGER',
+    branch_id: FALLBACK_BRANCHES[0].id,
+    branch_name: FALLBACK_BRANCHES[0].name,
+    kiosk_pin: '1001',
+    is_pin_configured: true,
+    is_active: true,
+    created_at: nowIso,
+    updated_at: nowIso
+  },
+  {
+    id: 'usr-manager-emergency',
+    auth_user_id: 'auth-manager-emergency',
+    full_name: 'Tagpuan Emergency Manager',
+    email: 'manager@tagpuan.ph',
+    role: 'MANAGER',
+    branch_id: FALLBACK_BRANCHES[0].id,
+    branch_name: FALLBACK_BRANCHES[0].name,
+    kiosk_pin: '1001',
+    is_pin_configured: true,
     is_active: true,
     created_at: nowIso,
     updated_at: nowIso
@@ -257,7 +313,8 @@ export function buildFallbackKioskMenuData(branchId?: string): KioskMenuData {
   return {
     branch: {
       id: branch.id,
-      name: branch.name
+      name: branch.name,
+      is_active: branch.is_active
     },
     categories: PRODUCT_CATEGORIES,
     products: syncedProducts,
@@ -269,19 +326,42 @@ export function buildFallbackKioskMenuData(branchId?: string): KioskMenuData {
 
 export function getActiveFallbackUser(): Profile {
   const savedUser = getStoredJson<Profile | null>('tagpuan_fallback_user', null);
-  if (savedUser) return savedUser;
+  if (savedUser) {
+    const cleanEmail = (savedUser.email || '').trim().toLowerCase();
+    if (cleanEmail === 'owner@tagpuan.ph' || cleanEmail === 'admin@tagpuan.ph') {
+      savedUser.role = 'OWNER';
+    } else if (cleanEmail === 'cashier.narra@tagpuan.ph' || cleanEmail === 'cashier@tagpuan.ph') {
+      savedUser.role = 'CASHIER';
+    } else if (cleanEmail === 'crew.narra@tagpuan.ph' || cleanEmail === 'kitchen@tagpuan.ph') {
+      savedUser.role = 'KITCHEN';
+    }
+    return savedUser;
+  }
   return FALLBACK_USERS[0];
 }
 
 export function resolveLoginFallback(email: string): { user: Profile; token: string; expires_at: number } {
   const cleanEmail = (email || '').trim().toLowerCase();
-  let matched = FALLBACK_USERS.find(u => u.email.toLowerCase() === cleanEmail);
+  const allKnownUsers = googleSheetsPersistence.getStoredUsers();
+  let matched =
+    allKnownUsers.find((u) => u.email.toLowerCase() === cleanEmail) ||
+    FALLBACK_USERS.find((u) => u.email.toLowerCase() === cleanEmail);
+
+  // Recovery seed role override guard: ensure default emergency accounts maintain strict role integrity
+  if (cleanEmail === 'owner@tagpuan.ph' || cleanEmail === 'admin@tagpuan.ph') {
+    if (matched) matched.role = 'OWNER';
+  } else if (cleanEmail === 'cashier.narra@tagpuan.ph' || cleanEmail === 'cashier@tagpuan.ph') {
+    if (matched) matched.role = 'CASHIER';
+  } else if (cleanEmail === 'crew.narra@tagpuan.ph' || cleanEmail === 'kitchen@tagpuan.ph') {
+    if (matched) matched.role = 'KITCHEN';
+  }
 
   if (!matched) {
     let inferredRole: UserRole = 'OWNER';
-    if (cleanEmail.includes('manager')) inferredRole = 'MANAGER';
+    if (cleanEmail.includes('admin')) inferredRole = 'OWNER';
+    else if (cleanEmail.includes('manager')) inferredRole = 'MANAGER';
     else if (cleanEmail.includes('cashier')) inferredRole = 'CASHIER';
-    else if (cleanEmail.includes('crew') || cleanEmail.includes('kitchen')) inferredRole = 'CREW';
+    else if (cleanEmail.includes('crew') || cleanEmail.includes('kitchen') || cleanEmail.includes('kds')) inferredRole = 'KITCHEN';
     else if (cleanEmail.includes('warehouse')) inferredRole = 'WAREHOUSEMAN';
 
     matched = {
@@ -298,6 +378,7 @@ export function resolveLoginFallback(email: string): { user: Profile; token: str
       created_at: nowIso,
       updated_at: nowIso
     };
+    void googleSheetsPersistence.syncUserProfileToSheet(matched);
   }
 
   const token = `fallback-token-${matched.id}-${Date.now()}`;
@@ -804,8 +885,87 @@ export async function handleApiFallback(urlStr: string, options: RequestInit = {
   }
 
   // --- USERS & EMPLOYEES ---
-  if (path === '/users' || path === '/admin/users') {
-    return { users: FALLBACK_USERS };
+  if ((path === '/users' || path === '/admin/users') && method === 'GET') {
+    void googleSheetsPersistence.fetchUsersFromSheet();
+    return { users: googleSheetsPersistence.getStoredUsers() };
+  }
+  if ((path === '/users' || path === '/admin/users') && method === 'POST') {
+    const branch = FALLBACK_BRANCHES.find(b => b.id === body.branch_id);
+    const newProfile: Profile = {
+      id: `usr-${Date.now()}`,
+      auth_user_id: `auth-${Date.now()}`,
+      email: (body.email || '').trim().toLowerCase(),
+      full_name: (body.full_name || '').trim(),
+      role: (body.role || 'CREW') as UserRole,
+      branch_id: body.role === 'OWNER' ? null : (body.branch_id || FALLBACK_BRANCHES[0].id),
+      branch_name: body.role === 'OWNER' ? 'All Branches (Global Access)' : (branch?.name || FALLBACK_BRANCHES[0].name),
+      kiosk_pin: body.kiosk_pin || (body.role === 'OWNER' ? '8888' : '1001'),
+      is_pin_configured: Boolean(body.kiosk_pin),
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    await googleSheetsPersistence.syncUserProfileToSheet(newProfile);
+    return { profile: newProfile, user: newProfile, message: 'User account created and synced to Google Sheets.' };
+  }
+  if (path.match(/^\/users\/[^/]+\/toggle-status$/) && method === 'PATCH') {
+    const targetId = path.split('/')[2];
+    const users = googleSheetsPersistence.getStoredUsers();
+    const target = users.find(u => u.id === targetId);
+    if (target) {
+      target.is_active = Boolean(body.is_active);
+      target.updated_at = new Date().toISOString();
+      await googleSheetsPersistence.syncUserProfileToSheet(target);
+      return { user: target, success: true };
+    }
+    return { success: false, error: 'User not found' };
+  }
+  if (path.match(/^\/users\/[^/]+\/assign-branch$/) && method === 'PATCH') {
+    const targetId = path.split('/')[2];
+    const users = googleSheetsPersistence.getStoredUsers();
+    const target = users.find(u => u.id === targetId);
+    if (target) {
+      const branch = FALLBACK_BRANCHES.find(b => b.id === body.branch_id);
+      target.branch_id = body.branch_id || null;
+      target.branch_name = branch?.name || (target.role === 'OWNER' ? 'All Branches (Global Access)' : null);
+      target.updated_at = new Date().toISOString();
+      await googleSheetsPersistence.syncUserProfileToSheet(target);
+      return { user: target, success: true };
+    }
+    return { success: false, error: 'User not found' };
+  }
+  if (path.match(/^\/users\/[^/]+\/kiosk-pin$/) && method === 'PATCH') {
+    const targetId = path.split('/')[2];
+    const users = googleSheetsPersistence.getStoredUsers();
+    const target = users.find(u => u.id === targetId);
+    if (target) {
+      target.kiosk_pin = body.kiosk_pin || '';
+      target.is_pin_configured = Boolean(body.kiosk_pin);
+      target.updated_at = new Date().toISOString();
+      await googleSheetsPersistence.syncUserProfileToSheet(target);
+      return { user: target, success: true };
+    }
+    return { success: false, error: 'User not found' };
+  }
+  if (path === '/users/me/kiosk-pin' && method === 'POST') {
+    const activeUser = getActiveFallbackUser();
+    activeUser.kiosk_pin = body.kiosk_pin || '';
+    activeUser.is_pin_configured = Boolean(body.kiosk_pin);
+    activeUser.updated_at = new Date().toISOString();
+    await googleSheetsPersistence.syncUserProfileToSheet(activeUser);
+    setStoredJson('tagpuan_fallback_user', activeUser);
+    return { user: activeUser, success: true };
+  }
+  if (path.match(/^\/users\/[^/]+$/) && method === 'DELETE') {
+    const targetId = path.split('/')[2];
+    const users = googleSheetsPersistence.getStoredUsers();
+    const target = users.find(u => u.id === targetId);
+    if (target) {
+      target.is_active = false;
+      target.updated_at = new Date().toISOString();
+      await googleSheetsPersistence.syncUserProfileToSheet(target);
+    }
+    return { success: true, deletedId: targetId, message: 'User deactivated and updated in Google Sheets.' };
   }
   if (path === '/employees') {
     return {
@@ -828,20 +988,28 @@ export async function handleApiFallback(urlStr: string, options: RequestInit = {
   // --- FINANCIAL, REMITTANCES, LOYALTY ---
   if ((path === '/financial/remittances' || path === '/remittances') && method === 'POST') {
     const branch = FALLBACK_BRANCHES.find(b => b.id === body.branch_id) || FALLBACK_BRANCHES[0];
+    const expected = Number(body.expected_cash ?? body.remitted_amount ?? 0);
+    const actual = Number(body.actual_cash ?? body.actual_cash_counted ?? body.remitted_amount ?? 0);
+    const remitted = Number(body.remitted_amount ?? 0);
     const newRemittance: CashRemittance = {
       id: `rem-${Date.now()}`,
+      remittance_number: `REM-${Date.now().toString().slice(-6)}`,
+      date: new Date().toISOString().split('T')[0],
       shift_id: body.shift_id || 'shift-open-auto',
       branch_id: branch.id,
       branch_name: branch.name,
       cashier_id: getActiveFallbackUser().id,
       cashier_name: body.cashier_name || getActiveFallbackUser().full_name,
-      expected_cash: Number(body.expected_cash ?? body.remitted_amount ?? 0),
-      actual_cash_counted: Number(body.actual_cash_counted ?? body.remitted_amount ?? 0),
+      expected_cash: expected,
+      actual_cash: actual,
+      actual_cash_counted: actual,
+      cash_variance: actual - expected,
+      remittance_variance: remitted - actual,
       total_expenses: Number(body.total_expenses ?? body.expenses ?? 0),
-      remitted_amount: Number(body.remitted_amount || 0),
-      variance: Number(body.variance || 0),
-      variance_flag: Math.abs(Number(body.variance || 0)) < 0.01 ? 'TALLY' : Number(body.variance || 0) < 0 ? 'SHORTAGE' : 'OVERAGE',
-      denominations: body.denominations || {},
+      remitted_amount: remitted,
+      variance: Number(body.variance ?? (actual - expected)),
+      variance_flag: Math.abs(actual - expected) < 0.01 ? 'TALLY' : (actual - expected) < 0 ? 'SHORTAGE' : 'OVERAGE',
+      denominations: body.denominations || null,
       proof_type: body.proof_type || 'Cash Remittance',
       proof_image_url: body.proof_image_url || null,
       notes: body.notes || '',

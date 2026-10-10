@@ -763,6 +763,7 @@ export interface Order {
   is_saved_ticket?: boolean;
   saved_ticket_name?: string | null;
   table_number?: string | null;
+  dining_option?: string | null;
   is_mobile_order?: boolean;
   created_at: string;
   updated_at: string;
@@ -1403,11 +1404,12 @@ export interface CashierShift {
 export type RemittanceStatus = 
   | 'DRAFT' 
   | 'SUBMITTED' 
-  | 'VERIFIED'
+  | 'VERIFIED' 
   | 'FOR_REVIEW' 
   | 'APPROVED' 
   | 'REJECTED' 
-  | 'RECONCILED';
+  | 'RECONCILED'
+  | 'CLOSED';
 
 export interface CashRemittance {
   id: string;
@@ -1420,13 +1422,17 @@ export interface CashRemittance {
   date: string;
   expected_cash: number;
   actual_cash: number;
+  actual_cash_counted?: number;
   remitted_amount: number;
   cash_variance: number; // actual_cash - expected_cash
+  variance?: number;
+  total_expenses?: number;
   remittance_variance: number; // remitted_amount - actual_cash
   gross_sales?: number;
   variance_flag?: 'TALLY' | 'SHORTAGE' | 'OVERAGE';
   ai_reconciliation_notes?: string | null;
   denomination_breakdown?: CashDenominationCount | null;
+  denominations?: CashDenominationCount | null;
   proof_image_url?: string | null;
   proof_type?: string | null; // e.g. 'Photo', 'Bank Deposit Slip', 'Official Receipt'
   notes?: string | null;

@@ -21,16 +21,18 @@ import {
   SalesAuditSheetRow,
   GoogleDriveArchiveItem
 } from '../../lib/googleSheetsPersistence';
+import { Profile } from '../../types/index';
 import codeGsRaw from '../../../Code.gs?raw';
 
 export const DatabaseSecurityView: React.FC = () => {
   const [schemaStatus, setSchemaStatus] = useState<any>(null);
   const [copied, setCopied] = useState(false);
   const [copiedCodeGs, setCopiedCodeGs] = useState(false);
-  const [activeSheetTab, setActiveSheetTab] = useState<'Orders_Log' | 'Menu_Inventory' | 'Sales_Audit' | 'Drive_PDF_Archive'>('Orders_Log');
+  const [activeSheetTab, setActiveSheetTab] = useState<'Orders_Log' | 'Menu_Inventory' | 'Sales_Audit' | 'Users_Profiles' | 'Drive_PDF_Archive'>('Orders_Log');
   const [ordersLog, setOrdersLog] = useState<OrdersLogSheetRow[]>([]);
   const [menuInventory, setMenuInventory] = useState<MenuInventorySheetRow[]>([]);
   const [salesAudit, setSalesAudit] = useState<SalesAuditSheetRow[]>([]);
+  const [usersProfiles, setUsersProfiles] = useState<Profile[]>([]);
   const [driveArchive, setDriveArchive] = useState<GoogleDriveArchiveItem[]>([]);
   const [syncQueueCount, setSyncQueueCount] = useState<number>(0);
   const [isSyncingSheets, setIsSyncingSheets] = useState<boolean>(false);
@@ -40,6 +42,7 @@ export const DatabaseSecurityView: React.FC = () => {
     setOrdersLog(googleSheetsPersistence.getLocalOrdersLog());
     setMenuInventory(googleSheetsPersistence.getLocalMenuInventoryRows());
     setSalesAudit(googleSheetsPersistence.getLocalSalesAuditRows());
+    setUsersProfiles(googleSheetsPersistence.getStoredUsers());
     setDriveArchive(googleSheetsPersistence.getDriveArchive());
     setSyncQueueCount(googleSheetsPersistence.getSyncQueue().length);
   };
@@ -57,13 +60,14 @@ export const DatabaseSecurityView: React.FC = () => {
       await Promise.all([
         googleSheetsPersistence.fetchOrdersFromSheet(),
         googleSheetsPersistence.fetchMenuInventoryFromSheet(),
-        googleSheetsPersistence.fetchSalesAuditFromSheet()
+        googleSheetsPersistence.fetchSalesAuditFromSheet(),
+        googleSheetsPersistence.fetchUsersFromSheet()
       ]);
       loadSheetsSnapshot();
       setSyncBanner(
         googleSheetsPersistence.isConfigured()
           ? `Synchronized with Google Sheets Web App API (${flushed.synced} queued operations flushed).`
-          : `LocalStorage persistence verified (${ordersLog.length} Orders_Log, ${menuInventory.length} Menu_Inventory, ${salesAudit.length} Sales_Audit rows ready).`
+          : `LocalStorage persistence verified (${ordersLog.length} Orders_Log, ${menuInventory.length} Menu_Inventory, ${salesAudit.length} Sales_Audit, ${usersProfiles.length} Users_Profiles rows ready).`
       );
     } catch (e) {
       setSyncBanner('Using LocalStorage persistence fallback (offline or latency guard active).');
@@ -383,12 +387,13 @@ CREATE POLICY "employee_self_service_payslips" ON public.payslips
           </div>
         )}
 
-        {/* 3 Google Sheets Tabs + Google Drive PDF Archive Switcher */}
+        {/* 4 Google Sheets Tabs + Google Drive PDF Archive Switcher */}
         <div className="flex flex-wrap items-center gap-2">
           {[
             { id: 'Orders_Log', label: `Tab 1: Orders_Log (${ordersLog.length})` },
             { id: 'Menu_Inventory', label: `Tab 2: Menu_Inventory (${menuInventory.length})` },
             { id: 'Sales_Audit', label: `Tab 3: Sales_Audit (${salesAudit.length})` },
+            { id: 'Users_Profiles', label: `Tab 4: Users_Profiles (${usersProfiles.length})` },
             { id: 'Drive_PDF_Archive', label: `Google Drive PDFs (${driveArchive.length})` }
           ].map((tab) => (
             <button
@@ -506,6 +511,56 @@ CREATE POLICY "employee_self_service_payslips" ON public.payslips
                     <td className="p-2.5 text-zinc-600">{row['Branch'] || 'Tagpuan Branch'}</td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Tab 4: Users_Profiles */}
+        {activeSheetTab === 'Users_Profiles' && (
+          <div className="overflow-x-auto border border-zinc-200 rounded-xl">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-zinc-900 text-[#CDEBC5] font-mono text-[11px]">
+                  <th className="p-2.5">User ID</th>
+                  <th className="p-2.5">Email</th>
+                  <th className="p-2.5">Full Name</th>
+                  <th className="p-2.5">Role</th>
+                  <th className="p-2.5">Branch</th>
+                  <th className="p-2.5">Kiosk PIN</th>
+                  <th className="p-2.5">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-200">
+                {usersProfiles.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="p-4 text-center text-zinc-400">
+                      No user accounts cached yet. Click "Sync Sheets & Drive" to fetch directly from Google Sheets.
+                    </td>
+                  </tr>
+                ) : (
+                  usersProfiles.map((user) => (
+                    <tr key={user.id} className="hover:bg-zinc-50">
+                      <td className="p-2.5 font-mono font-bold text-zinc-900">{user.id}</td>
+                      <td className="p-2.5 font-mono text-zinc-800">{user.email}</td>
+                      <td className="p-2.5 font-bold text-zinc-900">{user.full_name}</td>
+                      <td className="p-2.5">
+                        <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-800 text-[10px] font-bold border border-zinc-200">
+                          {user.role}
+                        </span>
+                      </td>
+                      <td className="p-2.5 text-zinc-600">{user.branch_name || 'All Branches (Global)'}</td>
+                      <td className="p-2.5 font-mono text-zinc-700">{user.kiosk_pin || '—'}</td>
+                      <td className="p-2.5">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          user.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'
+                        }`}>
+                          {user.is_active ? 'ACTIVE' : 'INACTIVE'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

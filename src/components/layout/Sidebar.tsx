@@ -48,9 +48,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   };
 
+  const isOwnerOrAdmin =
+    isOwner ||
+    user?.role === 'OWNER' ||
+    (user?.role as string) === 'ADMIN' ||
+    (user?.email && (
+      user.email.toLowerCase() === 'admin@tagpuan.ph' ||
+      user.email.toLowerCase() === 'owner@tagpuan.ph' ||
+      user.email.toLowerCase() === 'janzenmarkglori@gmail.com'
+    ));
+
   // Role-based Nav items
   const getNavItems = () => {
-    if (isOwner) {
+    if (isOwnerOrAdmin) {
       return [
         { id: 'dashboard', label: 'Executive Dashboard', icon: LayoutDashboard },
         { id: 'master-control', label: 'Owner Master Control', icon: Sliders, badge: 'OWNER' },
@@ -108,8 +118,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ];
     }
 
-    // Specific strict role for KITCHEN users: Only KDS
-    if (user?.role === 'KITCHEN') {
+    // Specific strict role for KITCHEN / CREW users: Strictly KDS only!
+    if (user?.role === 'KITCHEN' || user?.role === 'CREW') {
       return [
         { id: 'kds', label: 'Kitchen Display (KDS)', icon: ChefHat },
         { id: 'attendance', label: 'My Attendance', icon: Clock },
@@ -117,27 +127,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ];
     }
 
-    // Specific strict role for CASHIER: Strictly POS, Attendance, Cash Remittance, Loyalty (NO KDS!)
+    // Specific strict role for CASHIER: Strictly POS, Cash Remittance, Attendance (NO KDS, NO Admin)
     if (user?.role === 'CASHIER') {
       return [
         { id: 'pos', label: 'Point of Sale (POS)', icon: ShoppingCart },
         { id: 'financial', label: 'Cash Remittance & Shifts', icon: Banknote },
         { id: 'loyalty', label: 'Loyalty & Rewards', icon: Award },
         { id: 'attendance', label: 'My Attendance', icon: Clock },
-        { id: 'kiosk', label: 'Customer Kiosk Mode', icon: Sparkles },
-        { id: 'products', label: 'Product Catalog', icon: ChefHat },
-        { id: 'branches', label: 'My Branch', icon: Building2 },
         { id: 'notifications', label: 'Notifications', icon: Bell, badge: unreadCount },
       ];
     }
 
-    // Operational CREW: KDS, Attendance, Products, Branch Info
     return [
-      { id: 'dashboard', label: 'Crew Station', icon: LayoutDashboard },
-      { id: 'kds', label: 'Kitchen Display (KDS)', icon: ChefHat },
+      { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { id: 'attendance', label: 'My Attendance', icon: Clock },
-      { id: 'products', label: 'Product Catalog', icon: ChefHat },
-      { id: 'branches', label: 'My Branch', icon: Building2 },
       { id: 'notifications', label: 'Notifications', icon: Bell, badge: unreadCount },
     ];
   };

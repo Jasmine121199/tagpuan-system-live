@@ -89,6 +89,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return (
       clean === 'janzenmarkglori@gmail.com' ||
       clean === 'owner@tagpuan.ph' ||
+      clean === 'admin@tagpuan.ph' ||
       clean === 'maryjasmineadlaon121199@gmail.com'
     );
   };
