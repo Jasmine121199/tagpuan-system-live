@@ -46,7 +46,21 @@ const MainAppContent: React.FC = () => {
       try {
         const savedUserRaw = localStorage.getItem('tagpuan_fallback_user');
         const savedUser = savedUserRaw ? JSON.parse(savedUserRaw) : null;
-        const role = savedUser?.role;
+        let role = savedUser?.role;
+        const cleanEmail = (savedUser?.email || '').trim().toLowerCase();
+        if (
+          cleanEmail === 'owner@tagpuan.ph' ||
+          cleanEmail === 'admin@tagpuan.ph' ||
+          cleanEmail === 'janzenmarkglori@gmail.com' ||
+          cleanEmail === 'maryjasmineadlaon121199@gmail.com'
+        ) {
+          role = 'OWNER';
+        } else if (cleanEmail === 'cashier.narra@tagpuan.ph' || cleanEmail === 'cashier@tagpuan.ph') {
+          role = 'CASHIER';
+        } else if (cleanEmail === 'crew.narra@tagpuan.ph' || cleanEmail === 'kitchen@tagpuan.ph') {
+          role = 'KITCHEN';
+        }
+
         const savedRoleView = localStorage.getItem(`tagpuan_active_view_${role || 'user'}`);
 
         if (role === 'CASHIER') {
@@ -69,32 +83,28 @@ const MainAppContent: React.FC = () => {
             ? savedRoleView
             : 'dashboard';
         }
-        const generic = localStorage.getItem('tagpuan_active_view');
-        if (generic && !['master-control', 'security'].includes(generic)) return generic;
+        if (role === 'OWNER') {
+          const generic = localStorage.getItem('tagpuan_active_view');
+          if (generic && !['security'].includes(generic)) return generic;
+          return 'dashboard';
+        }
       } catch {}
     }
-    return 'dashboard';
+    return 'pos';
   });
   const [isCreateUserModalOpen, setIsCreateUserModalOpen] = useState(false);
   const [resetToken, setResetToken] = useState<string | null>(null);
   const [accessDeniedNotice, setAccessDeniedNotice] = useState<string | null>(null);
-  const [isHydratingSheets, setIsHydratingSheets] = useState<boolean>(true);
-  const [sheetsHydrationStatus, setSheetsHydrationStatus] = useState<'HYDRATING' | 'SYNCED' | 'FALLBACK'>('HYDRATING');
+  const [isHydratingSheets, setIsHydratingSheets] = useState<boolean>(false);
+  const [sheetsHydrationStatus, setSheetsHydrationStatus] = useState<'HYDRATING' | 'SYNCED' | 'FALLBACK'>('SYNCED');
 
-  // Auto-hydrate menu and pending sync queue from Google Sheets API on initial mount with latency guard
+  // Auto-hydrate menu and pending sync queue from Google Sheets API on initial mount asynchronously
   useEffect(() => {
     let isMounted = true;
-    // Fast UI fallback guard: never block initial render longer than 900ms if Google Apps Script experiences latency
-    const latencyGuard = setTimeout(() => {
-      if (isMounted) {
-        setIsHydratingSheets(false);
-        setSheetsHydrationStatus((prev) => (prev === 'HYDRATING' ? 'FALLBACK' : prev));
-      }
-    }, 900);
-
     Promise.all([
       googleSheetsPersistence.getMenu(),
-      googleSheetsPersistence.flushOfflineQueue()
+      googleSheetsPersistence.flushOfflineQueue(),
+      googleSheetsPersistence.fetchUsersFromSheet()
     ])
       .then(() => {
         if (isMounted) {
@@ -107,14 +117,10 @@ const MainAppContent: React.FC = () => {
           setSheetsHydrationStatus('FALLBACK');
           setIsHydratingSheets(false);
         }
-      })
-      .finally(() => {
-        clearTimeout(latencyGuard);
       });
 
     return () => {
       isMounted = false;
-      clearTimeout(latencyGuard);
     };
   }, []);
 
@@ -203,7 +209,7 @@ const MainAppContent: React.FC = () => {
     if (role === 'WAREHOUSEMAN') {
       return ['warehouse', 'requests', 'attendance', 'notifications'].includes(view);
     }
-    return ['dashboard', 'attendance', 'notifications'].includes(view);
+    return false;
   };
 
   const getDefaultViewForUser = (role?: string): string => {
@@ -211,7 +217,7 @@ const MainAppContent: React.FC = () => {
     if (role === 'CASHIER') return 'pos';
     if (role === 'KITCHEN' || role === 'CREW') return 'kds';
     if (role === 'WAREHOUSEMAN') return 'warehouse';
-    return 'dashboard';
+    return 'pos';
   };
 
   // Strictly enforce role-based active view on mount, reload, or user switching
@@ -329,7 +335,7 @@ const MainAppContent: React.FC = () => {
     }
   }, []);
 
-  if (isLoading || isHydratingSheets) {
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-[#f8fafc] flex flex-col items-center justify-center text-[#111111] p-4">
         <div className="bg-white border border-zinc-200 rounded-2xl shadow-sm px-6 py-5 flex flex-col items-center max-w-sm w-full text-center">
@@ -340,9 +346,7 @@ const MainAppContent: React.FC = () => {
             Tagpuan Enterprise ERP
           </p>
           <p className="text-[11px] text-zinc-500 font-mono mt-1">
-            {isHydratingSheets
-              ? 'Hydrating Menu & Orders from Google Sheets API...'
-              : 'Verifying Tagpuan ERP Session...'}
+            Verifying Tagpuan ERP Session...
           </p>
         </div>
       </div>

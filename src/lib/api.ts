@@ -313,6 +313,13 @@ class ApiClient {
     });
   }
 
+  public async updateUser(userId: string, data: Partial<Profile>): Promise<{ user: Profile }> {
+    return this.request<{ user: Profile }>(`/users/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+  }
+
   public async toggleUserStatus(userId: string, is_active: boolean): Promise<{ user: Profile }> {
     return this.request<{ user: Profile }>(`/users/${userId}/toggle-status`, {
       method: 'PATCH',

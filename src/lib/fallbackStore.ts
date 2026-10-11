@@ -324,20 +324,44 @@ export function buildFallbackKioskMenuData(branchId?: string): KioskMenuData {
   };
 }
 
-export function getActiveFallbackUser(): Profile {
+export function getActiveFallbackUser(): Profile | null {
   const savedUser = getStoredJson<Profile | null>('tagpuan_fallback_user', null);
-  if (savedUser) {
-    const cleanEmail = (savedUser.email || '').trim().toLowerCase();
-    if (cleanEmail === 'owner@tagpuan.ph' || cleanEmail === 'admin@tagpuan.ph') {
-      savedUser.role = 'OWNER';
-    } else if (cleanEmail === 'cashier.narra@tagpuan.ph' || cleanEmail === 'cashier@tagpuan.ph') {
-      savedUser.role = 'CASHIER';
-    } else if (cleanEmail === 'crew.narra@tagpuan.ph' || cleanEmail === 'kitchen@tagpuan.ph') {
-      savedUser.role = 'KITCHEN';
-    }
-    return savedUser;
+  if (!savedUser || !savedUser.email) {
+    return null;
   }
-  return FALLBACK_USERS[0];
+  const cleanEmail = (savedUser.email || '').trim().toLowerCase();
+  const allKnownUsers = googleSheetsPersistence.getStoredUsers();
+  const matched = allKnownUsers.find(
+    (u) => u.email.toLowerCase() === cleanEmail || u.id === savedUser.id
+  );
+
+  const effective: Profile = {
+    ...savedUser,
+    ...(matched || {}),
+    email: cleanEmail
+  };
+
+  // Hard session role locks for emergency recovery accounts
+  if (
+    cleanEmail === 'owner@tagpuan.ph' ||
+    cleanEmail === 'admin@tagpuan.ph' ||
+    cleanEmail === 'janzenmarkglori@gmail.com' ||
+    cleanEmail === 'maryjasmineadlaon121199@gmail.com'
+  ) {
+    effective.role = 'OWNER';
+  } else if (cleanEmail === 'cashier.narra@tagpuan.ph' || cleanEmail === 'cashier@tagpuan.ph') {
+    effective.role = 'CASHIER';
+  } else if (cleanEmail === 'crew.narra@tagpuan.ph' || cleanEmail === 'kitchen@tagpuan.ph') {
+    effective.role = 'KITCHEN';
+  } else if (matched?.role) {
+    effective.role = matched.role;
+  }
+
+  return effective;
+}
+
+export function getEnsuredActiveUser(): Profile {
+  return getActiveFallbackUser() || FALLBACK_USERS[0];
 }
 
 export function resolveLoginFallback(email: string): { user: Profile; token: string; expires_at: number } {
@@ -348,17 +372,22 @@ export function resolveLoginFallback(email: string): { user: Profile; token: str
     FALLBACK_USERS.find((u) => u.email.toLowerCase() === cleanEmail);
 
   // Recovery seed role override guard: ensure default emergency accounts maintain strict role integrity
-  if (cleanEmail === 'owner@tagpuan.ph' || cleanEmail === 'admin@tagpuan.ph') {
-    if (matched) matched.role = 'OWNER';
+  if (
+    cleanEmail === 'owner@tagpuan.ph' ||
+    cleanEmail === 'admin@tagpuan.ph' ||
+    cleanEmail === 'janzenmarkglori@gmail.com' ||
+    cleanEmail === 'maryjasmineadlaon121199@gmail.com'
+  ) {
+    if (matched) matched = { ...matched, role: 'OWNER' };
   } else if (cleanEmail === 'cashier.narra@tagpuan.ph' || cleanEmail === 'cashier@tagpuan.ph') {
-    if (matched) matched.role = 'CASHIER';
+    if (matched) matched = { ...matched, role: 'CASHIER' };
   } else if (cleanEmail === 'crew.narra@tagpuan.ph' || cleanEmail === 'kitchen@tagpuan.ph') {
-    if (matched) matched.role = 'KITCHEN';
+    if (matched) matched = { ...matched, role: 'KITCHEN' };
   }
 
   if (!matched) {
     let inferredRole: UserRole = 'OWNER';
-    if (cleanEmail.includes('admin')) inferredRole = 'OWNER';
+    if (cleanEmail.includes('admin') || cleanEmail.includes('owner')) inferredRole = 'OWNER';
     else if (cleanEmail.includes('manager')) inferredRole = 'MANAGER';
     else if (cleanEmail.includes('cashier')) inferredRole = 'CASHIER';
     else if (cleanEmail.includes('crew') || cleanEmail.includes('kitchen') || cleanEmail.includes('kds')) inferredRole = 'KITCHEN';
@@ -412,7 +441,19 @@ export async function handleApiFallback(urlStr: string, options: RequestInit = {
     return resolveLoginFallback(body.email || 'janzenmarkglori@gmail.com');
   }
   if (path === '/auth/logout') {
-    if (typeof window !== 'undefined') localStorage.removeItem('tagpuan_fallback_user');
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('tagpuan_fallback_user');
+      localStorage.removeItem('tagpuan_auth_token');
+      localStorage.removeItem('tagpuan_token');
+      localStorage.removeItem('tagpuan_active_shift');
+      localStorage.removeItem('tagpuan_active_view');
+      localStorage.removeItem('tagpuan_active_view_OWNER');
+      localStorage.removeItem('tagpuan_active_view_CASHIER');
+      localStorage.removeItem('tagpuan_active_view_KITCHEN');
+      localStorage.removeItem('tagpuan_active_view_MANAGER');
+      localStorage.removeItem('tagpuan_active_view_WAREHOUSEMAN');
+      sessionStorage.clear();
+    }
     return { success: true, message: 'Logged out successfully.' };
   }
   if (path === '/auth/me') {
@@ -431,12 +472,13 @@ export async function handleApiFallback(urlStr: string, options: RequestInit = {
 
   // --- ATTENDANCE & SHIFT STATUS ---
   if (path === '/attendance/status') {
+    const curUser = getEnsuredActiveUser();
     const shift = getStoredJson<any>('tagpuan_active_shift', {
       id: 'att-active-1',
       employee_id: 'emp-1',
-      user_id: getActiveFallbackUser().id,
-      branch_id: getActiveFallbackUser().branch_id || FALLBACK_BRANCHES[0].id,
-      branch_name: getActiveFallbackUser().branch_name || FALLBACK_BRANCHES[0].name,
+      user_id: curUser.id,
+      branch_id: curUser.branch_id || FALLBACK_BRANCHES[0].id,
+      branch_name: curUser.branch_name || FALLBACK_BRANCHES[0].name,
       date: nowIso.slice(0, 10),
       clock_in: nowIso,
       clock_out: null,
@@ -452,12 +494,13 @@ export async function handleApiFallback(urlStr: string, options: RequestInit = {
     };
   }
   if (path === '/attendance/clock-in' && method === 'POST') {
+    const curUser = getEnsuredActiveUser();
     const record = {
       id: `att-${Date.now()}`,
       employee_id: body.employee_id || 'emp-1',
-      user_id: getActiveFallbackUser().id,
-      employee_name: getActiveFallbackUser().full_name,
-      role: getActiveFallbackUser().role,
+      user_id: curUser.id,
+      employee_name: curUser.full_name,
+      role: curUser.role,
       branch_id: body.branch_id || FALLBACK_BRANCHES[0].id,
       branch_name: FALLBACK_BRANCHES[0].name,
       date: new Date().toISOString().slice(0, 10),
@@ -708,12 +751,13 @@ export async function handleApiFallback(urlStr: string, options: RequestInit = {
   if (path === '/pos/session') {
     const branchId = parsedUrl.searchParams.get('branch_id') || FALLBACK_BRANCHES[0].id;
     const branch = FALLBACK_BRANCHES.find(b => b.id === branchId) || FALLBACK_BRANCHES[0];
+    const curUser = getEnsuredActiveUser();
     const session: CashierSession = {
       id: 'shift-open-auto',
       branch_id: branch.id,
       branch_name: branch.name,
-      cashier_id: getActiveFallbackUser().id,
-      cashier_name: getActiveFallbackUser().full_name,
+      cashier_id: curUser.id,
+      cashier_name: curUser.full_name,
       start_time: nowIso,
       beginning_cash: 2000,
       expected_cash: 2000,
@@ -729,10 +773,11 @@ export async function handleApiFallback(urlStr: string, options: RequestInit = {
     return { success: true, session: { id: `shift-${Date.now()}`, status: 'OPEN', opening_cash: Number(body.opening_cash || 1000) } };
   }
   if ((path === '/pos/session/close' || path === '/financial/shifts/close') && method === 'POST') {
+    const curUser = getEnsuredActiveUser();
     await googleSheetsPersistence.saveAudit({
       daily_remittance: Number(body.closing_cash || 0),
       closing_cash: Number(body.closing_cash || 0),
-      cashier_name: getActiveFallbackUser().full_name,
+      cashier_name: curUser.full_name,
       branch_name: FALLBACK_BRANCHES[0].name,
       report_type: 'SALES_CLOSING_REPORT',
       status: 'CLOSED',
@@ -779,13 +824,14 @@ export async function handleApiFallback(urlStr: string, options: RequestInit = {
     const subtotal = items.reduce((s: number, i: any) => s + i.subtotal, 0);
     const discountAmount = Number(body.discount_amount || 0);
     const total = Math.max(0, subtotal - discountAmount);
+    const curUser = getEnsuredActiveUser();
     const newOrder: Order = {
       id: `ord-${Date.now()}`,
       order_number: `TAG-${String(orders.length + 1).padStart(4, '0')}`,
       branch_id: branch.id,
       branch_name: branch.name,
-      cashier_id: getActiveFallbackUser().id,
-      cashier_name: getActiveFallbackUser().full_name,
+      cashier_id: curUser.id,
+      cashier_name: curUser.full_name,
       source: 'POS',
       status: 'PENDING_PAYMENT',
       kitchen_status: 'NEW',
@@ -818,13 +864,14 @@ export async function handleApiFallback(urlStr: string, options: RequestInit = {
       // Sync payment & deduct recipe inventory in Google Sheets ("Orders_Log" & "Menu_Inventory")
       void googleSheetsPersistence.logOrderToSheet(target, true);
     }
+    const curUser = getEnsuredActiveUser();
     const orderObj: Order = target || {
       id: orderId,
       order_number: 'TAG-0001',
       branch_id: FALLBACK_BRANCHES[0].id,
       branch_name: FALLBACK_BRANCHES[0].name,
-      cashier_id: getActiveFallbackUser().id,
-      cashier_name: getActiveFallbackUser().full_name,
+      cashier_id: curUser.id,
+      cashier_name: curUser.full_name,
       source: 'POS',
       status: 'PAID',
       kitchen_status: 'NEW',
@@ -949,12 +996,38 @@ export async function handleApiFallback(urlStr: string, options: RequestInit = {
   }
   if (path === '/users/me/kiosk-pin' && method === 'POST') {
     const activeUser = getActiveFallbackUser();
-    activeUser.kiosk_pin = body.kiosk_pin || '';
-    activeUser.is_pin_configured = Boolean(body.kiosk_pin);
-    activeUser.updated_at = new Date().toISOString();
-    await googleSheetsPersistence.syncUserProfileToSheet(activeUser);
-    setStoredJson('tagpuan_fallback_user', activeUser);
-    return { user: activeUser, success: true };
+    if (activeUser) {
+      activeUser.kiosk_pin = body.kiosk_pin || '';
+      activeUser.is_pin_configured = Boolean(body.kiosk_pin);
+      activeUser.updated_at = new Date().toISOString();
+      await googleSheetsPersistence.syncUserProfileToSheet(activeUser);
+      setStoredJson('tagpuan_fallback_user', activeUser);
+      return { user: activeUser, success: true };
+    }
+    return { success: false, error: 'Unauthorized' };
+  }
+  if (path.match(/^\/users\/[^/]+$/) && (method === 'PUT' || method === 'PATCH')) {
+    const targetId = path.split('/')[2];
+    const users = googleSheetsPersistence.getStoredUsers();
+    const target = users.find(u => u.id === targetId);
+    if (target) {
+      if (body.full_name) target.full_name = body.full_name.trim();
+      if (body.role) target.role = body.role as UserRole;
+      if (body.branch_id !== undefined) {
+        target.branch_id = body.branch_id;
+        const branch = FALLBACK_BRANCHES.find(b => b.id === body.branch_id);
+        target.branch_name = branch?.name || (target.role === 'OWNER' ? 'All Branches (Global Access)' : null);
+      }
+      if (body.is_active !== undefined) target.is_active = Boolean(body.is_active);
+      if (body.kiosk_pin !== undefined) {
+        target.kiosk_pin = body.kiosk_pin;
+        target.is_pin_configured = Boolean(body.kiosk_pin);
+      }
+      target.updated_at = new Date().toISOString();
+      await googleSheetsPersistence.syncUserProfileToSheet(target);
+      return { user: target, profile: target, success: true };
+    }
+    return { success: false, error: 'User not found' };
   }
   if (path.match(/^\/users\/[^/]+$/) && method === 'DELETE') {
     const targetId = path.split('/')[2];
@@ -991,6 +1064,7 @@ export async function handleApiFallback(urlStr: string, options: RequestInit = {
     const expected = Number(body.expected_cash ?? body.remitted_amount ?? 0);
     const actual = Number(body.actual_cash ?? body.actual_cash_counted ?? body.remitted_amount ?? 0);
     const remitted = Number(body.remitted_amount ?? 0);
+    const curUser = getEnsuredActiveUser();
     const newRemittance: CashRemittance = {
       id: `rem-${Date.now()}`,
       remittance_number: `REM-${Date.now().toString().slice(-6)}`,
@@ -998,8 +1072,8 @@ export async function handleApiFallback(urlStr: string, options: RequestInit = {
       shift_id: body.shift_id || 'shift-open-auto',
       branch_id: branch.id,
       branch_name: branch.name,
-      cashier_id: getActiveFallbackUser().id,
-      cashier_name: body.cashier_name || getActiveFallbackUser().full_name,
+      cashier_id: curUser.id,
+      cashier_name: body.cashier_name || curUser.full_name,
       expected_cash: expected,
       actual_cash: actual,
       actual_cash_counted: actual,

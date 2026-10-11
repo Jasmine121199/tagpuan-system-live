@@ -544,6 +544,11 @@ class GoogleSheetsPersistenceService {
     // Hydrate localStorage queue from IndexedDB if needed and flush when back online
     void this.syncIndexedDBQueueToLocal();
 
+    // Asynchronously pre-fetch and synchronize user profiles from "Users_Profiles" tab without blocking
+    setTimeout(() => {
+      void this.fetchUsersFromSheet();
+    }, 500);
+
     window.addEventListener('online', () => {
       console.log('[GoogleSheetsAPI] Network connection restored — auto-syncing queued offline orders & audits...');
       void this.flushOfflineQueue();
@@ -764,22 +769,54 @@ class GoogleSheetsPersistenceService {
   }
 
   /**
-   * Low-latency POST request to Google Apps Script `doPost`
-   * Uses Content-Type: text/plain;charset=utf-8 so browsers do not fail on OPTIONS preflight with script.google.com
+   * Batched, low-latency POST request to Google Apps Script `doPost`
+   * Batches rapid concurrent calls into a single BATCH_SYNC payload within a 350ms window
+   * to avoid hitting Google Apps Script rate limits and concurrency locks.
    */
   public async callDoPost(
     action: string,
     payload: Record<string, any>,
     queueOnFailure = true
   ): Promise<any | null> {
-    const res = await this.callDoPostDirect(action, payload, this.getConfig().timeoutMs);
-    if (res && res.success !== false) {
-      return res;
-    }
-    if (queueOnFailure) {
-      this.enqueueMutation(action, payload);
-    }
-    return null;
+    return new Promise((resolve) => {
+      this.pendingBatchOperations.push({ action, data: payload, resolve });
+
+      if (this.mutationBatchTimer) {
+        clearTimeout(this.mutationBatchTimer);
+      }
+
+      this.mutationBatchTimer = setTimeout(async () => {
+        const batch = [...this.pendingBatchOperations];
+        this.pendingBatchOperations = [];
+        this.mutationBatchTimer = null;
+
+        if (batch.length === 1) {
+          const single = batch[0];
+          const res = await this.callDoPostDirect(single.action, single.data, this.getConfig().timeoutMs);
+          if (res && res.success !== false) {
+            single.resolve(res);
+          } else {
+            if (queueOnFailure) {
+              this.enqueueMutation(single.action, single.data);
+            }
+            single.resolve(null);
+          }
+        } else if (batch.length > 1) {
+          // Batch multiple operations in 1 request
+          const operations = batch.map((b) => ({ action: b.action, data: b.data }));
+          const batchRes = await this.callDoPostDirect('BATCH_SYNC', { operations }, 8000);
+          if (batchRes && batchRes.success !== false) {
+            batch.forEach((b) => b.resolve(batchRes));
+          } else {
+            // Queue mutations individually for offline sync
+            if (queueOnFailure) {
+              batch.forEach((b) => this.enqueueMutation(b.action, b.data));
+            }
+            batch.forEach((b) => b.resolve(null));
+          }
+        }
+      }, 350);
+    });
   }
 
   /**
@@ -1755,6 +1792,17 @@ class GoogleSheetsPersistenceService {
     writeLocal('tagpuan_users', updatedUsers);
     writeLocal('tagpuan_admin_users', updatedUsers);
     writeLocal(STORAGE_KEYS.USERS_PROFILES, updatedUsers);
+
+    // If active session matches this user, update active user session in localStorage
+    try {
+      const activeRaw = localStorage.getItem('tagpuan_fallback_user');
+      if (activeRaw) {
+        const active = JSON.parse(activeRaw);
+        if (active && (active.id === profile.id || active.email?.toLowerCase() === profile.email?.toLowerCase())) {
+          writeLocal('tagpuan_fallback_user', { ...active, ...profile });
+        }
+      }
+    } catch {}
 
     // Persist to IndexedDB
     void idbOfflineStore.put(IDB_STORES.USERS, profile);

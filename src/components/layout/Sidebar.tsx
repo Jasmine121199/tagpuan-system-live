@@ -139,7 +139,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
 
     return [
-      { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { id: 'attendance', label: 'My Attendance', icon: Clock },
       { id: 'notifications', label: 'Notifications', icon: Bell, badge: unreadCount },
     ];

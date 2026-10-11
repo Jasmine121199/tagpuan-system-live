@@ -70,9 +70,11 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
   const [resetPinLoading, setResetPinLoading] = useState(false);
   const [resetPinError, setResetPinError] = useState<string | null>(null);
 
-  // Edit Branch Modal State
+  // Edit User Modal State
   const [editingUser, setEditingUser] = useState<Profile | null>(null);
   const [editBranchId, setEditBranchId] = useState<string>('');
+  const [editRole, setEditRole] = useState<UserRole>('CREW');
+  const [editFullName, setEditFullName] = useState<string>('');
   const [editLoading, setEditLoading] = useState(false);
 
   // Notification Toast State
@@ -199,56 +201,49 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
       console.warn('Failed to save updated users to localStorage:', e);
     }
 
-    // 3. Send async DELETE request with active session token
+    // 3. Send async DELETE request and sync deactivation directly to Google Sheets
     try {
-      const token =
-        localStorage.getItem('tagpuan_auth_token') ||
-        sessionStorage.getItem('tagpuan_auth_token') ||
-        localStorage.getItem('tagpuan_token') ||
-        sessionStorage.getItem('tagpuan_token') ||
-        localStorage.getItem('token') ||
-        sessionStorage.getItem('token');
-
-      const response = await fetch(`/api/users/${targetUser.id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+      await api.deleteUser(targetUser.id);
+      await googleSheetsPersistence.syncUserProfileToSheet({
+        ...targetUser,
+        is_active: false
       });
 
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(data.error || `Server responded with status ${response.status}`);
-      }
-
-      console.log(`[UserManagement] User ${targetUser.id} (${targetUser.email}) deleted successfully from server:`, data);
-      showToast(`User "${targetUser.full_name}" has been permanently deleted.`, 'success');
+      console.log(`[UserManagement] User ${targetUser.id} (${targetUser.email}) deleted successfully:`);
+      showToast(`User "${targetUser.full_name}" has been permanently deleted and updated in Google Sheets.`, 'success');
     } catch (err: any) {
-      console.error(`[UserManagement] Failed to delete user ${targetUser.id} on server:`, err);
-      showToast(err.message || 'Failed to delete user on server.', 'error');
+      console.error(`[UserManagement] Failed to delete user ${targetUser.id}:`, err);
+      showToast(err.message || 'Failed to delete user.', 'error');
       // On failure, re-sync with server
       fetchUsersAndBranches();
     }
   };
 
-  const handleSaveBranchAssignment = async () => {
+  const handleSaveEditUser = async () => {
     if (!editingUser || !isOwner) return;
     try {
       setEditLoading(true);
-      await api.assignUserBranch(editingUser.id, editingUser.role === 'OWNER' ? null : editBranchId);
+      const isOwnerRole = editRole === 'OWNER';
       const assignedBranch = branches.find(b => b.id === editBranchId);
       const updatedProfile: Profile = {
         ...editingUser,
-        branch_id: editingUser.role === 'OWNER' ? null : editBranchId,
-        branch_name: editingUser.role === 'OWNER' ? 'All Branches (Global Access)' : (assignedBranch?.name || null)
+        full_name: editFullName.trim() || editingUser.full_name,
+        role: editRole,
+        branch_id: isOwnerRole ? null : (editBranchId || editingUser.branch_id),
+        branch_name: isOwnerRole
+          ? 'All Branches (Global Access)'
+          : (assignedBranch?.name || editingUser.branch_name || 'Tagpuan - Narra Branch'),
+        updated_at: new Date().toISOString()
       };
+
+      await api.updateUser(editingUser.id, updatedProfile);
       await googleSheetsPersistence.syncUserProfileToSheet(updatedProfile);
+
       setEditingUser(null);
+      showToast(`User "${updatedProfile.full_name}" successfully updated and synced to Google Sheets.`, 'success');
       await fetchUsersAndBranches();
     } catch (err: any) {
-      alert(err.message || 'Failed to update branch assignment.');
+      alert(err.message || 'Failed to update user profile.');
     } finally {
       setEditLoading(false);
     }
@@ -529,10 +524,12 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
                             <button
                               onClick={() => {
                                 setEditingUser(u);
+                                setEditFullName(u.full_name);
+                                setEditRole(u.role);
                                 setEditBranchId(u.branch_id || (branches[0]?.id || ''));
                               }}
                               className="p-1.5 text-zinc-500 hover:text-[#111111] rounded-lg hover:bg-zinc-100 transition"
-                              title="Reassign Branch"
+                              title="Edit User Role & Branch"
                             >
                               <Edit2 className="w-3.5 h-3.5" />
                             </button>
@@ -737,28 +734,59 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
         </div>
       )}
 
-      {/* EDIT BRANCH REASSIGNMENT MODAL */}
+      {/* EDIT USER ROLE & BRANCH MODAL */}
       {editingUser && isOwner && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
           <div className="w-full max-w-md bg-white border border-[#e5e7eb] rounded-2xl p-6 shadow-2xl">
-            <h3 className="text-base font-bold text-[#111111] mb-1">Reassign Branch</h3>
+            <h3 className="text-base font-bold text-[#111111] mb-1">Edit User Account</h3>
             <p className="text-xs text-zinc-500 mb-4">
-              Update branch location for <span className="text-[#111111] font-semibold">{editingUser.full_name}</span> ({editingUser.role})
+              Update role and branch permissions for <span className="text-[#111111] font-semibold">{editingUser.email}</span>
             </p>
 
-            <div className="mb-4">
-              <label className="block text-xs font-semibold text-zinc-700 mb-1.5">Select New Branch</label>
-              <select
-                value={editBranchId}
-                onChange={(e) => setEditBranchId(e.target.value)}
-                className="w-full px-3 py-2.5 bg-[#f8fafc] border border-[#e2e8f0] focus:border-[#111111] rounded-xl text-xs text-[#111111] outline-none transition font-medium"
-              >
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
+            <div className="space-y-3.5 mb-5">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1">Full Name</label>
+                <input
+                  type="text"
+                  value={editFullName}
+                  onChange={(e) => setEditFullName(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#f8fafc] border border-[#e2e8f0] focus:border-[#111111] rounded-xl text-xs text-[#111111] outline-none font-medium"
+                  placeholder="Employee Full Name"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-700 mb-1">Assigned Role</label>
+                <select
+                  value={editRole}
+                  onChange={(e) => setEditRole(e.target.value as UserRole)}
+                  className="w-full px-3 py-2.5 bg-[#f8fafc] border border-[#e2e8f0] focus:border-[#111111] rounded-xl text-xs text-[#111111] outline-none transition font-medium"
+                >
+                  <option value="OWNER">👑 Master Owner (Full Global Access)</option>
+                  <option value="MANAGER">👔 Store Manager (Branch Management)</option>
+                  <option value="CASHIER">💵 Cashier (POS Terminal & Remittance)</option>
+                  <option value="KITCHEN">🍳 Kitchen Staff (Kitchen Display KDS)</option>
+                  <option value="CREW">👥 Kitchen Crew (KDS & Prep)</option>
+                  <option value="WAREHOUSEMAN">🚚 Warehouseman (Commissary & Logistics)</option>
+                </select>
+              </div>
+
+              {editRole !== 'OWNER' && (
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-700 mb-1">Assigned Branch</label>
+                  <select
+                    value={editBranchId}
+                    onChange={(e) => setEditBranchId(e.target.value)}
+                    className="w-full px-3 py-2.5 bg-[#f8fafc] border border-[#e2e8f0] focus:border-[#111111] rounded-xl text-xs text-[#111111] outline-none transition font-medium"
+                  >
+                    {branches.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name} ({b.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-3">
@@ -772,10 +800,10 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
               <button
                 type="button"
                 disabled={editLoading}
-                onClick={handleSaveBranchAssignment}
+                onClick={handleSaveEditUser}
                 className="flex-1 py-2.5 bg-[#111111] hover:bg-[#262626] disabled:opacity-50 text-white font-bold rounded-xl text-xs transition flex items-center justify-center gap-2"
               >
-                {editLoading ? <Loader2 className="w-4 h-4 animate-spin text-[#CDEBC5]" /> : <span>Update Branch</span>}
+                {editLoading ? <Loader2 className="w-4 h-4 animate-spin text-[#CDEBC5]" /> : <span>Save to Sheets</span>}
               </button>
             </div>
           </div>
