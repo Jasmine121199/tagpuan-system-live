@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Profile, UserRole, CreateUserInput } from '../types/index';
+import { Profile, UserRole, CreateUserInput, isMasterOwnerEmail, MASTER_OWNER_EMAILS } from '../types/index';
 import { api } from '../lib/api';
 
 interface AuthContextType {
@@ -34,17 +34,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const parsed: Profile = JSON.parse(raw);
         if (parsed && parsed.email) {
           const cleanEmail = parsed.email.trim().toLowerCase();
-          if (
-            cleanEmail === 'owner@tagpuan.ph' ||
-            cleanEmail === 'admin@tagpuan.ph' ||
-            cleanEmail === 'janzenmarkglori@gmail.com' ||
-            cleanEmail === 'maryjasmineadlaon121199@gmail.com'
-          ) {
+          if (isMasterOwnerEmail(cleanEmail)) {
             parsed.role = 'OWNER';
           } else if (cleanEmail === 'cashier.narra@tagpuan.ph' || cleanEmail === 'cashier@tagpuan.ph') {
             parsed.role = 'CASHIER';
           } else if (cleanEmail === 'crew.narra@tagpuan.ph' || cleanEmail === 'kitchen@tagpuan.ph') {
             parsed.role = 'KITCHEN';
+          } else if (cleanEmail === 'manager.narra@tagpuan.ph' || cleanEmail === 'manager@tagpuan.ph') {
+            parsed.role = 'MANAGER';
+          } else if (cleanEmail.includes('warehouse')) {
+            parsed.role = 'WAREHOUSEMAN';
+          } else if (parsed.role === 'OWNER' && !isMasterOwnerEmail(cleanEmail)) {
+            // Guard against role corruption: non-master emails cannot hydrate as OWNER
+            parsed.role = 'CASHIER';
           }
           return parsed;
         }
@@ -71,9 +73,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, 1500);
     try {
       const currentUser = await api.getCurrentUser();
-      setUser(currentUser);
-    } catch {
-      setUser(null);
+      if (currentUser) {
+        // Enforce strict role lock: Non-master emails can NEVER become OWNER
+        if (currentUser.role === 'OWNER' && !isMasterOwnerEmail(currentUser.email)) {
+          const cachedRaw = localStorage.getItem('tagpuan_fallback_user');
+          const cachedUser = cachedRaw ? JSON.parse(cachedRaw) : null;
+          currentUser.role = (cachedUser?.role && cachedUser.role !== 'OWNER') ? cachedUser.role : 'CASHIER';
+        }
+        setUser(currentUser);
+        localStorage.setItem('tagpuan_fallback_user', JSON.stringify(currentUser));
+      }
+    } catch (err) {
+      // If backend/Sheets is slow or offline, retain local cached role instead of kicking to null or defaulting to master
+      console.warn('Google Sheets API slow or offline; maintaining local cached session role:', err);
     } finally {
       clearTimeout(timeoutGuard);
       setIsLoading(false);
@@ -95,13 +107,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         defaultView = 'kds';
       } else if (cleanEmail.includes('warehouse')) {
         defaultView = 'warehouse';
+      } else if (!isMasterOwnerEmail(cleanEmail) && !cleanEmail.includes('manager')) {
+        defaultView = 'pos';
       }
+
+      // Reset any active views across all role keys to prevent permission leakage on account switch
       if (typeof window !== 'undefined') {
+        localStorage.removeItem('tagpuan_active_view');
         localStorage.setItem('tagpuan_active_view', defaultView);
       }
 
       const res = await api.login(email, password, rememberMe);
-      setUser(res.user);
+      const authenticatedUser = res.user;
+
+      if (authenticatedUser.role === 'OWNER' && !isMasterOwnerEmail(authenticatedUser.email)) {
+        authenticatedUser.role = 'CASHIER';
+      }
+
+      setUser(authenticatedUser);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('tagpuan_fallback_user', JSON.stringify(authenticatedUser));
+        localStorage.setItem(`tagpuan_active_view_${authenticatedUser.role}`, defaultView);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -122,6 +149,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.removeItem('tagpuan_active_view_OWNER');
         localStorage.removeItem('tagpuan_active_view_CASHIER');
         localStorage.removeItem('tagpuan_active_view_KITCHEN');
+        localStorage.removeItem('tagpuan_active_view_CREW');
         localStorage.removeItem('tagpuan_active_view_MANAGER');
         localStorage.removeItem('tagpuan_active_view_WAREHOUSEMAN');
         sessionStorage.clear();
@@ -151,25 +179,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const isMasterOwnerEmail = (email?: string | null): boolean => {
-    if (!email) return false;
-    const clean = email.toLowerCase().trim();
-    return (
-      clean === 'janzenmarkglori@gmail.com' ||
-      clean === 'owner@tagpuan.ph' ||
-      clean === 'admin@tagpuan.ph' ||
-      clean === 'maryjasmineadlaon121199@gmail.com'
-    );
-  };
-
   const hasPermission = (allowedRoles: UserRole[]): boolean => {
     if (!user) return false;
-    if (isMasterOwnerEmail(user.email) || user.role === 'OWNER') return true;
+    if (isOwner) return true;
     return allowedRoles.includes(user.role);
   };
 
-  const isOwner = user?.role === 'OWNER' || isMasterOwnerEmail(user?.email);
-  const isManager = user?.role === 'MANAGER' || isOwner;
+  // Hard Isolation: Cashiers, Kitchen, Crew, and Warehouseman can NEVER be Owner or Manager
+  const isOwner = !!user && (user.role === 'OWNER' || isMasterOwnerEmail(user.email)) && !['CASHIER', 'KITCHEN', 'CREW', 'WAREHOUSEMAN'].includes(user.role);
+  const isManager = !!user && (user.role === 'MANAGER' || isOwner) && !['CASHIER', 'KITCHEN', 'CREW', 'WAREHOUSEMAN'].includes(user.role);
   const assignedBranchId = isOwner ? null : (user?.branch_id || null);
 
   return (

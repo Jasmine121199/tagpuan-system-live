@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
-import { LayoutDashboard, Users, Building2, FileText, Bell, ChefHat, ShoppingCart, Banknote, Clock } from 'lucide-react';
+import { LayoutDashboard, Users, Building2, FileText, Bell, ChefHat, ShoppingCart, Banknote, Clock, Truck, Boxes, PackageCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { useBranch } from '../../context/BranchContext';
@@ -24,6 +24,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
   const isKitchen = user?.role === 'KITCHEN' || user?.role === 'CREW';
   const isCashier = user?.role === 'CASHIER';
+  const isWarehouseman = user?.role === 'WAREHOUSEMAN';
 
   return (
     <div className="min-h-screen bg-[#f8fafc] text-[#1a1a1a] flex flex-col antialiased">
@@ -148,6 +149,75 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               <span>Attendance</span>
             </button>
           </>
+        ) : isWarehouseman ? (
+          <>
+            <button
+              onClick={() => setActiveView('warehouse')}
+              className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${
+                activeView === 'warehouse' ? 'bg-[#CDEBC5] text-[#111111]' : 'text-zinc-500 hover:text-zinc-800'
+              }`}
+            >
+              <Truck className="w-5 h-5 mb-0.5" />
+              <span>Logistics</span>
+            </button>
+            <button
+              onClick={() => setActiveView('requests')}
+              className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${
+                activeView === 'requests' ? 'bg-[#CDEBC5] text-[#111111]' : 'text-zinc-500 hover:text-zinc-800'
+              }`}
+            >
+              <PackageCheck className="w-5 h-5 mb-0.5" />
+              <span>Requests</span>
+            </button>
+            <button
+              onClick={() => setActiveView('attendance')}
+              className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${
+                activeView === 'attendance' ? 'bg-[#CDEBC5] text-[#111111]' : 'text-zinc-500 hover:text-zinc-800'
+              }`}
+            >
+              <Clock className="w-5 h-5 mb-0.5" />
+              <span>Attendance</span>
+            </button>
+          </>
+        ) : isManager && !isOwner ? (
+          <>
+            <button
+              onClick={() => setActiveView('dashboard')}
+              className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${
+                activeView === 'dashboard' ? 'bg-[#CDEBC5] text-[#111111]' : 'text-zinc-500 hover:text-zinc-800'
+              }`}
+            >
+              <LayoutDashboard className="w-5 h-5 mb-0.5" />
+              <span>Dashboard</span>
+            </button>
+            <button
+              onClick={() => setActiveView('inventory')}
+              className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${
+                activeView === 'inventory' ? 'bg-[#CDEBC5] text-[#111111]' : 'text-zinc-500 hover:text-zinc-800'
+              }`}
+            >
+              <Boxes className="w-5 h-5 mb-0.5" />
+              <span>Inventory</span>
+            </button>
+            <button
+              onClick={() => setActiveView('pos')}
+              className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${
+                activeView === 'pos' ? 'bg-[#CDEBC5] text-[#111111]' : 'text-zinc-500 hover:text-zinc-800'
+              }`}
+            >
+              <ShoppingCart className="w-5 h-5 mb-0.5" />
+              <span>POS</span>
+            </button>
+            <button
+              onClick={() => setActiveView('attendance')}
+              className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${
+                activeView === 'attendance' ? 'bg-[#CDEBC5] text-[#111111]' : 'text-zinc-500 hover:text-zinc-800'
+              }`}
+            >
+              <Clock className="w-5 h-5 mb-0.5" />
+              <span>Attendance</span>
+            </button>
+          </>
         ) : (
           <>
             <button
@@ -160,7 +230,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               <span>Dashboard</span>
             </button>
 
-            {(isOwner || isManager) && (
+            {isOwner && (
               <button
                 onClick={() => setActiveView('users')}
                 className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${
@@ -168,7 +238,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                 }`}
               >
                 <Users className="w-5 h-5 mb-0.5" />
-                <span>{isOwner ? 'Users' : 'Staff'}</span>
+                <span>Users</span>
               </button>
             )}
 
@@ -182,7 +252,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               <span>Branches</span>
             </button>
 
-            {(isOwner || isManager) && (
+            {isOwner && (
               <button
                 onClick={() => setActiveView('audit')}
                 className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${

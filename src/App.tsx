@@ -36,6 +36,7 @@ import { ShiftProvider, useShift } from './context/ShiftContext';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { googleSheetsPersistence } from './lib/googleSheetsPersistence';
 import { Loader2, ShieldAlert, X, Clock, AlertTriangle, ChefHat } from 'lucide-react';
+import { isViewAllowedForRole, getDefaultViewForRole, isMasterOwnerEmail, ROLE_ALLOWED_VIEWS } from './types/index';
 
 const MainAppContent: React.FC = () => {
   const { user, isLoading, isOwner, isManager } = useAuth();
@@ -48,44 +49,45 @@ const MainAppContent: React.FC = () => {
         const savedUser = savedUserRaw ? JSON.parse(savedUserRaw) : null;
         let role = savedUser?.role;
         const cleanEmail = (savedUser?.email || '').trim().toLowerCase();
-        if (
-          cleanEmail === 'owner@tagpuan.ph' ||
-          cleanEmail === 'admin@tagpuan.ph' ||
-          cleanEmail === 'janzenmarkglori@gmail.com' ||
-          cleanEmail === 'maryjasmineadlaon121199@gmail.com'
-        ) {
+        if (isMasterOwnerEmail(cleanEmail)) {
           role = 'OWNER';
         } else if (cleanEmail === 'cashier.narra@tagpuan.ph' || cleanEmail === 'cashier@tagpuan.ph') {
           role = 'CASHIER';
         } else if (cleanEmail === 'crew.narra@tagpuan.ph' || cleanEmail === 'kitchen@tagpuan.ph') {
           role = 'KITCHEN';
+        } else if (cleanEmail.includes('warehouse')) {
+          role = 'WAREHOUSEMAN';
+        } else if (cleanEmail.includes('manager')) {
+          role = 'MANAGER';
+        } else if (role === 'OWNER' && !isMasterOwnerEmail(cleanEmail)) {
+          role = 'CASHIER';
         }
 
         const savedRoleView = localStorage.getItem(`tagpuan_active_view_${role || 'user'}`);
 
         if (role === 'CASHIER') {
-          return (savedRoleView && ['pos', 'financial', 'loyalty', 'attendance', 'notifications'].includes(savedRoleView))
+          return (savedRoleView && isViewAllowedForRole('CASHIER', savedRoleView))
             ? savedRoleView
             : 'pos';
         }
         if (role === 'KITCHEN' || role === 'CREW') {
-          return (savedRoleView && ['kds', 'attendance', 'notifications'].includes(savedRoleView))
+          return (savedRoleView && isViewAllowedForRole('KITCHEN', savedRoleView))
             ? savedRoleView
             : 'kds';
         }
         if (role === 'WAREHOUSEMAN') {
-          return (savedRoleView && ['warehouse', 'requests', 'attendance', 'notifications'].includes(savedRoleView))
+          return (savedRoleView && isViewAllowedForRole('WAREHOUSEMAN', savedRoleView))
             ? savedRoleView
             : 'warehouse';
         }
         if (role === 'MANAGER') {
-          return (savedRoleView && !['master-control', 'security', 'users'].includes(savedRoleView))
+          return (savedRoleView && isViewAllowedForRole('MANAGER', savedRoleView))
             ? savedRoleView
             : 'dashboard';
         }
         if (role === 'OWNER') {
           const generic = localStorage.getItem('tagpuan_active_view');
-          if (generic && !['security'].includes(generic)) return generic;
+          if (generic && isViewAllowedForRole('OWNER', generic)) return generic;
           return 'dashboard';
         }
       } catch {}
@@ -179,45 +181,22 @@ const MainAppContent: React.FC = () => {
   });
 
   const isOwnerOrAdmin =
-    isOwner ||
-    user?.role === 'OWNER' ||
-    (user?.role as string) === 'ADMIN' ||
-    (user?.email && (
-      user.email.toLowerCase() === 'admin@tagpuan.ph' ||
-      user.email.toLowerCase() === 'owner@tagpuan.ph' ||
-      user.email.toLowerCase() === 'janzenmarkglori@gmail.com'
-    ));
+    !['CASHIER', 'KITCHEN', 'CREW', 'WAREHOUSEMAN'].includes(user?.role || '') &&
+    (isOwner ||
+      user?.role === 'OWNER' ||
+      (user?.role as string) === 'ADMIN' ||
+      isMasterOwnerEmail(user?.email));
 
   // Role-based view authorization checkers
   const isViewAllowedForUser = (view: string, role?: string): boolean => {
-    if (isOwnerOrAdmin || role === 'OWNER' || (role as string) === 'ADMIN') return true;
-    if (role === 'MANAGER') {
-      return [
-        'dashboard', 'reports', 'ai-command', 'requests', 'inventory',
-        'pos', 'loyalty', 'kiosk', 'products', 'employees', 'attendance',
-        'payroll', 'branches', 'audit', 'notifications', 'financial'
-      ].includes(view);
-    }
-    if (role === 'CASHIER') {
-      // Cashier: strictly POS Terminal, Orders, Cash Remittance, Attendance, Loyalty
-      return ['pos', 'financial', 'loyalty', 'attendance', 'notifications'].includes(view);
-    }
-    if (role === 'KITCHEN' || role === 'CREW') {
-      // Kitchen Staff: strictly KDS (Kitchen Display System) view only, plus Attendance
-      return ['kds', 'attendance', 'notifications'].includes(view);
-    }
-    if (role === 'WAREHOUSEMAN') {
-      return ['warehouse', 'requests', 'attendance', 'notifications'].includes(view);
-    }
-    return false;
+    if (!role) return false;
+    if (isOwnerOrAdmin) return true;
+    return isViewAllowedForRole(role, view);
   };
 
   const getDefaultViewForUser = (role?: string): string => {
-    if (isOwnerOrAdmin || role === 'OWNER' || (role as string) === 'ADMIN' || role === 'MANAGER') return 'dashboard';
-    if (role === 'CASHIER') return 'pos';
-    if (role === 'KITCHEN' || role === 'CREW') return 'kds';
-    if (role === 'WAREHOUSEMAN') return 'warehouse';
-    return 'pos';
+    if (isOwnerOrAdmin) return 'dashboard';
+    return getDefaultViewForRole(role);
   };
 
   // Strictly enforce role-based active view on mount, reload, or user switching
@@ -258,54 +237,30 @@ const MainAppContent: React.FC = () => {
     }
   }, [activeView, user?.role, refreshShiftStatus]);
 
-  // Strict RBAC URL & View Guard: Prevent non-Owner/non-Manager access to /payroll, /payslips, /salaries
+  // Strict RBAC URL & View Guard: Prevent non-authorized direct URL navigation, query parameters, or state tampering
   useEffect(() => {
     if (!user) return;
 
     const pathname = window.location.pathname.toLowerCase();
     const searchParams = new URLSearchParams(window.location.search);
     const viewParam = (searchParams.get('view') || searchParams.get('tab') || '').toLowerCase();
+    const pathView = pathname.replace(/^\//, '').split('/')[0];
 
-    const isRequestingPayroll =
-      pathname.includes('/payroll') ||
-      pathname.includes('/payslips') ||
-      pathname.includes('/salaries') ||
-      viewParam === 'payroll' ||
-      viewParam === 'payslips' ||
-      viewParam === 'salaries' ||
-      activeView === 'payroll';
-
-    if (isRequestingPayroll) {
-      if (user.role !== 'OWNER' && user.role !== 'MANAGER') {
-        // Immediately redirect to their authorized default home view with access denied notice
-        const defaultView = (user.role === 'KITCHEN' || user.role === 'CREW') ? 'kds' : user.role === 'WAREHOUSEMAN' ? 'warehouse' : 'dashboard';
+    const attemptedTarget = viewParam || pathView;
+    if (attemptedTarget && !['', 'login', 'reset-password'].includes(attemptedTarget)) {
+      if (!isViewAllowedForUser(attemptedTarget, user.role)) {
+        const defaultView = getDefaultViewForUser(user.role);
         setActiveView(defaultView);
-        setAccessDeniedNotice('Access Denied / Unauthorized: The Payroll and Salary Management module is strictly restricted to Tagpuan Owners and Store Managers.');
-        if (pathname.includes('/payroll') || pathname.includes('/payslips') || searchParams.has('view')) {
-          window.history.replaceState({}, document.title, window.location.pathname.replace(/\/payroll|\/payslips|\/salaries/gi, '/'));
-        }
-      } else if (activeView !== 'payroll' && (viewParam === 'payroll' || pathname.includes('/payroll'))) {
-        setActiveView('payroll');
+        setAccessDeniedNotice(`Access Denied / Unauthorized: The requested view "${attemptedTarget}" is strictly restricted for role [${user.role}]. Redirected to authorized view.`);
+        window.history.replaceState({}, document.title, window.location.pathname.replace(new RegExp(`/${attemptedTarget}`, 'gi'), '/'));
+        return;
       }
     }
 
-    // Strict RBAC URL & View Guard: Central Commissary & Logistics reserved for OWNER and WAREHOUSEMAN only
-    const isRequestingWarehouse =
-      pathname.includes('/warehouse') ||
-      pathname.includes('/commissary') ||
-      viewParam === 'warehouse' ||
-      viewParam === 'commissary' ||
-      activeView === 'warehouse';
-
-    if (isRequestingWarehouse) {
-      if (user.role !== 'OWNER' && user.role !== 'WAREHOUSEMAN') {
-        const defaultView = user.role === 'MANAGER' ? 'requests' : 'dashboard';
-        setActiveView(defaultView);
-        setAccessDeniedNotice('Access Restricted: Central Commissary & Logistics is strictly reserved for the Master Owner and authorized Warehouseman only.');
-        if (pathname.includes('/warehouse') || pathname.includes('/commissary') || searchParams.has('view') || searchParams.has('tab')) {
-          window.history.replaceState({}, document.title, window.location.pathname.replace(/\/warehouse|\/commissary/gi, '/'));
-        }
-      }
+    if (!isViewAllowedForUser(activeView, user.role)) {
+      const defaultView = getDefaultViewForUser(user.role);
+      setActiveView(defaultView);
+      setAccessDeniedNotice(`Access Denied / Unauthorized: Role [${user.role}] cannot access "${activeView}".`);
     }
   }, [user, activeView]);
 

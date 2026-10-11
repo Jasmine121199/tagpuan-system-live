@@ -8,6 +8,116 @@ export type UserRole =
   | 'WAREHOUSEMAN'
   | 'KITCHEN';
 
+export const MASTER_OWNER_EMAILS = [
+  'janzenmarkglori@gmail.com',
+  'owner@tagpuan.ph',
+  'admin@tagpuan.ph',
+  'maryjasmineadlaon121199@gmail.com'
+] as const;
+
+export function isMasterOwnerEmail(email?: string | null): boolean {
+  if (!email) return false;
+  const clean = email.toLowerCase().trim();
+  return (MASTER_OWNER_EMAILS as readonly string[]).includes(clean);
+}
+
+/**
+ * Hard-coded Role-Based Access Control (RBAC) Isolation Matrix
+ * Prevents unauthorized tab access, URL parameter manipulation, and permission leaks.
+ */
+export const ROLE_ALLOWED_VIEWS: Record<UserRole, readonly string[]> = {
+  OWNER: [
+    'dashboard',
+    'master-control',
+    'financial',
+    'reports',
+    'ai-command',
+    'purchasing',
+    'warehouse',
+    'requests',
+    'inventory',
+    'kds',
+    'pos',
+    'loyalty',
+    'kiosk',
+    'products',
+    'employees',
+    'attendance',
+    'payroll',
+    'users',
+    'branches',
+    'audit',
+    'notifications',
+    'security'
+  ],
+  MANAGER: [
+    'dashboard',
+    'financial',
+    'reports',
+    'ai-command',
+    'requests',
+    'inventory',
+    'pos',
+    'loyalty',
+    'kiosk',
+    'products',
+    'employees',
+    'attendance',
+    'payroll',
+    'branches',
+    'audit',
+    'notifications'
+  ],
+  CASHIER: [
+    'pos',
+    'financial',
+    'loyalty',
+    'attendance',
+    'notifications'
+  ],
+  WAREHOUSEMAN: [
+    'warehouse',
+    'requests',
+    'attendance',
+    'notifications'
+  ],
+  KITCHEN: [
+    'kds',
+    'attendance',
+    'notifications'
+  ],
+  CREW: [
+    'kds',
+    'attendance',
+    'notifications'
+  ]
+} as const;
+
+export const ROLE_DEFAULT_VIEW: Record<UserRole, string> = {
+  OWNER: 'dashboard',
+  MANAGER: 'dashboard',
+  CASHIER: 'pos',
+  WAREHOUSEMAN: 'warehouse',
+  KITCHEN: 'kds',
+  CREW: 'kds'
+} as const;
+
+export function isViewAllowedForRole(role?: string | null, view?: string | null): boolean {
+  if (!role || !view) return false;
+  const upper = role.toUpperCase();
+  if (upper === 'OWNER' || upper === 'ADMIN') return true;
+  const allowed = (ROLE_ALLOWED_VIEWS as Record<string, readonly string[]>)[upper];
+  if (!allowed) return false;
+  return allowed.includes(view);
+}
+
+export function getDefaultViewForRole(role?: string | null): string {
+  if (!role) return 'pos';
+  const upper = role.toUpperCase();
+  if (upper === 'OWNER' || upper === 'ADMIN') return 'dashboard';
+  return (ROLE_DEFAULT_VIEW as Record<string, string>)[upper] || 'pos';
+}
+
 export interface Branch {
   id: string;
   name: string;

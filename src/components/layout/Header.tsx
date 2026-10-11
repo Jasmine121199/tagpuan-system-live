@@ -3,6 +3,7 @@ import { Bell, LogOut, Shield, Building2, User, CheckCircle2, ChevronDown, Menu,
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { useBranch } from '../../context/BranchContext';
+import { isMasterOwnerEmail } from '../../types/index';
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
 
 interface HeaderProps {
@@ -38,10 +39,18 @@ export const Header: React.FC<HeaderProps> = ({
         targetView = 'kds';
       } else if (cleanEmail.includes('warehouse')) {
         targetView = 'warehouse';
+      } else if (!isMasterOwnerEmail(cleanEmail) && !cleanEmail.includes('manager')) {
+        targetView = 'pos';
       }
 
-      // Immediately reset previous session view keys to prevent role leakage
+      // Immediately purge all previous session view keys to prevent role leakage
       localStorage.removeItem('tagpuan_active_view');
+      localStorage.removeItem('tagpuan_active_view_OWNER');
+      localStorage.removeItem('tagpuan_active_view_CASHIER');
+      localStorage.removeItem('tagpuan_active_view_KITCHEN');
+      localStorage.removeItem('tagpuan_active_view_CREW');
+      localStorage.removeItem('tagpuan_active_view_MANAGER');
+      localStorage.removeItem('tagpuan_active_view_WAREHOUSEMAN');
       localStorage.setItem('tagpuan_active_view', targetView);
       setActiveView(targetView);
 

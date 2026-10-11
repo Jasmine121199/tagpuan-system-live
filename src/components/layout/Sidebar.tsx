@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
+import { isMasterOwnerEmail, isViewAllowedForRole } from '../../types/index';
 
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
 
@@ -41,22 +42,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const { user, isOwner, isManager } = useAuth();
   const { unreadCount } = useNotifications();
 
+  const isOwnerOrAdmin =
+    !['CASHIER', 'KITCHEN', 'CREW', 'WAREHOUSEMAN'].includes(user?.role || '') &&
+    (isOwner ||
+      user?.role === 'OWNER' ||
+      (user?.role as string) === 'ADMIN' ||
+      isMasterOwnerEmail(user?.email));
+
   const handleNavClick = (viewId: string) => {
+    if (!isOwnerOrAdmin && !isViewAllowedForRole(user?.role, viewId)) {
+      return;
+    }
     setActiveView(viewId);
     if (closeMobileMenu) {
       closeMobileMenu();
     }
   };
-
-  const isOwnerOrAdmin =
-    isOwner ||
-    user?.role === 'OWNER' ||
-    (user?.role as string) === 'ADMIN' ||
-    (user?.email && (
-      user.email.toLowerCase() === 'admin@tagpuan.ph' ||
-      user.email.toLowerCase() === 'owner@tagpuan.ph' ||
-      user.email.toLowerCase() === 'janzenmarkglori@gmail.com'
-    ));
 
   // Role-based Nav items
   const getNavItems = () => {

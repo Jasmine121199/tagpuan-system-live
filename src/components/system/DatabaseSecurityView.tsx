@@ -11,8 +11,10 @@ import {
   RefreshCw,
   FolderArchive,
   CheckCircle2,
-  CloudOff
+  CloudOff,
+  ShieldAlert
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 import { api } from '../../lib/api';
 import {
   googleSheetsPersistence,
@@ -25,6 +27,7 @@ import { Profile } from '../../types/index';
 import codeGsRaw from '../../../Code.gs?raw';
 
 export const DatabaseSecurityView: React.FC = () => {
+  const { isOwner } = useAuth();
   const [schemaStatus, setSchemaStatus] = useState<any>(null);
   const [copied, setCopied] = useState(false);
   const [copiedCodeGs, setCopiedCodeGs] = useState(false);
@@ -254,6 +257,20 @@ CREATE POLICY "employee_self_service_payslips" ON public.payslips
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  if (!isOwner) {
+    return (
+      <div className="bg-white p-12 rounded-3xl border border-red-200 text-center max-w-lg mx-auto mt-12 shadow-sm animate-fadeIn">
+        <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-4 font-black">
+          <ShieldAlert className="w-6 h-6" />
+        </div>
+        <h2 className="text-lg font-black text-zinc-900">Access Restricted: Master Owner Only</h2>
+        <p className="text-xs text-zinc-500 mt-2 leading-relaxed">
+          Database schemas, security keys, Google Sheets synchronization, and Row Level Security configurations are strictly restricted to the Tagpuan Master Owner.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 animate-fadeIn max-w-6xl mx-auto">

@@ -18,7 +18,8 @@ import {
   Eye,
   EyeOff,
   KeyRound,
-  Trash2
+  Trash2,
+  ShieldAlert
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../lib/api';
@@ -309,6 +310,20 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
         return 'bg-zinc-100 text-zinc-800 border-zinc-200';
     }
   };
+
+  if (!isOwner) {
+    return (
+      <div className="bg-white p-12 rounded-3xl border border-red-200 text-center max-w-lg mx-auto mt-12 shadow-sm animate-fadeIn">
+        <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-4 font-black">
+          <ShieldAlert className="w-6 h-6" />
+        </div>
+        <h2 className="text-lg font-black text-zinc-900">Access Restricted: Master Owner Only</h2>
+        <p className="text-xs text-zinc-500 mt-2 leading-relaxed">
+          User account management, role assignment, and credentials are strictly restricted to the Tagpuan Master Owner. Non-owner staff cannot view or modify user accounts.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fadeIn">

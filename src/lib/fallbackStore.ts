@@ -353,15 +353,34 @@ export function getActiveFallbackUser(): Profile | null {
     effective.role = 'CASHIER';
   } else if (cleanEmail === 'crew.narra@tagpuan.ph' || cleanEmail === 'kitchen@tagpuan.ph') {
     effective.role = 'KITCHEN';
+  } else if (cleanEmail === 'manager.narra@tagpuan.ph' || cleanEmail === 'manager@tagpuan.ph') {
+    effective.role = 'MANAGER';
+  } else if (cleanEmail.includes('warehouse')) {
+    effective.role = 'WAREHOUSEMAN';
   } else if (matched?.role) {
-    effective.role = matched.role;
+    if (matched.role === 'OWNER' && !['owner@tagpuan.ph', 'admin@tagpuan.ph', 'janzenmarkglori@gmail.com', 'maryjasmineadlaon121199@gmail.com'].includes(cleanEmail)) {
+      effective.role = 'CASHIER';
+    } else {
+      effective.role = matched.role;
+    }
+  } else if (savedUser.role) {
+    if (savedUser.role === 'OWNER' && !['owner@tagpuan.ph', 'admin@tagpuan.ph', 'janzenmarkglori@gmail.com', 'maryjasmineadlaon121199@gmail.com'].includes(cleanEmail)) {
+      effective.role = 'CASHIER';
+    } else {
+      effective.role = savedUser.role;
+    }
+  } else {
+    effective.role = 'CREW';
   }
 
   return effective;
 }
 
 export function getEnsuredActiveUser(): Profile {
-  return getActiveFallbackUser() || FALLBACK_USERS[0];
+  const active = getActiveFallbackUser();
+  if (active) return active;
+  const cashierFallback = FALLBACK_USERS.find(u => u.role === 'CASHIER') || FALLBACK_USERS[2];
+  return cashierFallback || FALLBACK_USERS[0];
 }
 
 export function resolveLoginFallback(email: string): { user: Profile; token: string; expires_at: number } {
@@ -383,15 +402,24 @@ export function resolveLoginFallback(email: string): { user: Profile; token: str
     if (matched) matched = { ...matched, role: 'CASHIER' };
   } else if (cleanEmail === 'crew.narra@tagpuan.ph' || cleanEmail === 'kitchen@tagpuan.ph') {
     if (matched) matched = { ...matched, role: 'KITCHEN' };
+  } else if (cleanEmail === 'manager.narra@tagpuan.ph' || cleanEmail === 'manager@tagpuan.ph') {
+    if (matched) matched = { ...matched, role: 'MANAGER' };
   }
 
   if (!matched) {
-    let inferredRole: UserRole = 'OWNER';
-    if (cleanEmail.includes('admin') || cleanEmail.includes('owner')) inferredRole = 'OWNER';
-    else if (cleanEmail.includes('manager')) inferredRole = 'MANAGER';
+    let inferredRole: UserRole = 'CREW';
+    if (
+      cleanEmail === 'owner@tagpuan.ph' ||
+      cleanEmail === 'admin@tagpuan.ph' ||
+      cleanEmail === 'janzenmarkglori@gmail.com' ||
+      cleanEmail === 'maryjasmineadlaon121199@gmail.com'
+    ) {
+      inferredRole = 'OWNER';
+    } else if (cleanEmail.includes('manager')) inferredRole = 'MANAGER';
     else if (cleanEmail.includes('cashier')) inferredRole = 'CASHIER';
     else if (cleanEmail.includes('crew') || cleanEmail.includes('kitchen') || cleanEmail.includes('kds')) inferredRole = 'KITCHEN';
     else if (cleanEmail.includes('warehouse')) inferredRole = 'WAREHOUSEMAN';
+    else inferredRole = 'CREW';
 
     matched = {
       id: `usr-${Date.now()}`,
@@ -438,7 +466,10 @@ export async function handleApiFallback(urlStr: string, options: RequestInit = {
 
   // --- AUTH ROUTES ---
   if (path === '/auth/login' && method === 'POST') {
-    return resolveLoginFallback(body.email || 'janzenmarkglori@gmail.com');
+    if (!body.email) {
+      throw new Error('Email address is required for login.');
+    }
+    return resolveLoginFallback(body.email);
   }
   if (path === '/auth/logout') {
     if (typeof window !== 'undefined') {
