@@ -9,10 +9,7 @@ export type UserRole =
   | 'KITCHEN';
 
 export const MASTER_OWNER_EMAILS = [
-  'janzenmarkglori@gmail.com',
-  'owner@tagpuan.ph',
-  'admin@tagpuan.ph',
-  'maryjasmineadlaon121199@gmail.com'
+  'janzenmarkglori@gmail.com'
 ] as const;
 
 export function isMasterOwnerEmail(email?: string | null): boolean {
@@ -65,7 +62,6 @@ export const ROLE_ALLOWED_VIEWS: Record<UserRole, readonly string[]> = {
     'attendance',
     'payroll',
     'branches',
-    'audit',
     'notifications'
   ],
   CASHIER: [
@@ -105,6 +101,10 @@ export const ROLE_DEFAULT_VIEW: Record<UserRole, string> = {
 export function isViewAllowedForRole(role?: string | null, view?: string | null): boolean {
   if (!role || !view) return false;
   const upper = role.toUpperCase();
+  // Master settings, user account creation, security, and global audit views are strictly reserved for OWNER
+  if (['master-control', 'security', 'users', 'audit'].includes(view)) {
+    return upper === 'OWNER';
+  }
   if (upper === 'OWNER' || upper === 'ADMIN') return true;
   const allowed = (ROLE_ALLOWED_VIEWS as Record<string, readonly string[]>)[upper];
   if (!allowed) return false;

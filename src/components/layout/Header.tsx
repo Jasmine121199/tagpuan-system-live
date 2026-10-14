@@ -3,7 +3,7 @@ import { Bell, LogOut, Shield, Building2, User, CheckCircle2, ChevronDown, Menu,
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { useBranch } from '../../context/BranchContext';
-import { isMasterOwnerEmail } from '../../types/index';
+import { isMasterOwnerEmail, getDefaultViewForRole } from '../../types/index';
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
 
 interface HeaderProps {
@@ -28,22 +28,53 @@ export const Header: React.FC<HeaderProps> = ({
   const notifRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
+  // Clean, strict role validation: Non-master emails can NEVER inherit OWNER permissions or badges
+  const effectiveRole = (user?.role === 'OWNER' && !isMasterOwnerEmail(user?.email))
+    ? 'CASHIER'
+    : (user?.role || 'CREW');
+
+  // Strict check: only genuine Master Owners can ever see or execute the testing switcher
+  const isMasterSession = Boolean(
+    isOwner && 
+    effectiveRole === 'OWNER' && 
+    user?.email && 
+    isMasterOwnerEmail(user.email)
+  );
+
   const handleSwitchAccount = async (email: string) => {
+    // Hard guard: reject non-master sessions immediately
+    if (!isMasterSession) {
+      console.warn('Switch account is strictly prohibited for non-master sessions.');
+      return;
+    }
+
     setSwitchingUser(true);
     try {
       const cleanEmail = email.toLowerCase().trim();
       let targetView = 'dashboard';
+      let targetRole = 'OWNER';
+
       if (cleanEmail === 'cashier.narra@tagpuan.ph' || cleanEmail.includes('cashier')) {
         targetView = 'pos';
+        targetRole = 'CASHIER';
       } else if (cleanEmail === 'crew.narra@tagpuan.ph' || cleanEmail.includes('crew') || cleanEmail.includes('kitchen')) {
         targetView = 'kds';
+        targetRole = 'KITCHEN';
       } else if (cleanEmail.includes('warehouse')) {
         targetView = 'warehouse';
-      } else if (!isMasterOwnerEmail(cleanEmail) && !cleanEmail.includes('manager')) {
+        targetRole = 'WAREHOUSEMAN';
+      } else if (cleanEmail.includes('manager')) {
+        targetView = 'dashboard';
+        targetRole = 'MANAGER';
+      } else if (isMasterOwnerEmail(cleanEmail)) {
+        targetView = 'dashboard';
+        targetRole = 'OWNER';
+      } else {
         targetView = 'pos';
+        targetRole = 'CASHIER';
       }
 
-      // Immediately purge all previous session view keys to prevent role leakage
+      // 1. Completely purge all master override states and previous role views from localStorage
       localStorage.removeItem('tagpuan_active_view');
       localStorage.removeItem('tagpuan_active_view_OWNER');
       localStorage.removeItem('tagpuan_active_view_CASHIER');
@@ -51,9 +82,14 @@ export const Header: React.FC<HeaderProps> = ({
       localStorage.removeItem('tagpuan_active_view_CREW');
       localStorage.removeItem('tagpuan_active_view_MANAGER');
       localStorage.removeItem('tagpuan_active_view_WAREHOUSEMAN');
+      localStorage.removeItem('tagpuan_active_view_user');
+
+      // 2. Set target view cleanly for the destination role
       localStorage.setItem('tagpuan_active_view', targetView);
+      localStorage.setItem(`tagpuan_active_view_${targetRole}`, targetView);
       setActiveView(targetView);
 
+      // 3. Authenticate target user profile
       await login(email, 'TagpuanStaff2026!');
       setIsUserMenuOpen(false);
     } catch (e) {
@@ -125,7 +161,7 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Active Branch Scope Selector */}
-        {isOwner ? (
+        {isMasterSession ? (
           <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#f8fafc] border border-[#e2e8f0] text-xs">
             <Building2 className="w-3.5 h-3.5 text-zinc-700 shrink-0" />
             <span className="text-zinc-500 font-medium shrink-0">Branch:</span>
@@ -162,8 +198,8 @@ export const Header: React.FC<HeaderProps> = ({
           <PWAInstallButton variant="compact" forceShow={true} />
         </div>
 
-        {/* Stealth Decoy Toggle (Audit Mode) for Owner */}
-        {isOwner && (
+        {/* Stealth Decoy Toggle (Audit Mode) for Master Owner */}
+        {isMasterSession && (
           <button
             type="button"
             onClick={toggleDecoy}
@@ -279,8 +315,8 @@ export const Header: React.FC<HeaderProps> = ({
                 {user?.full_name || 'User'}
               </p>
               <div className="flex items-center gap-1 mt-0.5">
-                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${getRoleBadgeColor(user?.role)}`}>
-                  {user?.role}
+                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${getRoleBadgeColor(effectiveRole)}`}>
+                  {effectiveRole}
                 </span>
               </div>
             </div>
@@ -297,18 +333,18 @@ export const Header: React.FC<HeaderProps> = ({
                 <p className="text-xs font-bold text-[#111111] truncate">{user?.full_name}</p>
                 <p className="text-[11px] text-zinc-500 truncate mt-0.5">{user?.email}</p>
                 <div className="mt-2.5 flex items-center gap-2">
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${getRoleBadgeColor(user?.role)}`}>
-                    {user?.role}
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${getRoleBadgeColor(effectiveRole)}`}>
+                    {effectiveRole}
                   </span>
                   <span className="text-[10px] text-zinc-500 truncate">
-                    {isOwner ? 'Global Access' : (user?.branch_name || 'Assigned Branch')}
+                    {isMasterSession ? 'Global Access' : (user?.branch_name || 'Assigned Branch')}
                   </span>
                 </div>
               </div>
 
               <div className="p-2 divide-y divide-[#f1f5f9]">
                 {/* Emergency Role Account Switcher (Master / Owner Only) */}
-                {isOwner && (
+                {isMasterSession && (
                   <div className="py-2 px-1">
                     <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider mb-1.5 px-2 font-mono">
                       Master Role Testing Switcher
@@ -316,30 +352,30 @@ export const Header: React.FC<HeaderProps> = ({
                     <div className="space-y-1">
                       <button
                         type="button"
-                        disabled={switchingUser || user?.email === 'owner@tagpuan.ph'}
-                        onClick={() => handleSwitchAccount('owner@tagpuan.ph')}
+                        disabled={switchingUser || user?.email === 'janzenmarkglori@gmail.com'}
+                        onClick={() => handleSwitchAccount('janzenmarkglori@gmail.com')}
                         className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition flex items-center justify-between ${
-                          user?.email === 'owner@tagpuan.ph'
+                          user?.email === 'janzenmarkglori@gmail.com'
                             ? 'bg-emerald-50 text-emerald-900 border border-emerald-200'
                             : 'text-zinc-700 hover:bg-zinc-100'
                         }`}
                       >
                         <span className="font-bold">👑 Master Owner</span>
-                        <span className="text-[10px] text-zinc-400 font-mono">owner@</span>
+                        <span className="text-[10px] text-zinc-400 font-mono">janzen@</span>
                       </button>
 
                       <button
                         type="button"
-                        disabled={switchingUser || user?.email === 'admin@tagpuan.ph'}
-                        onClick={() => handleSwitchAccount('admin@tagpuan.ph')}
+                        disabled={switchingUser || user?.email === 'janecasimiro27@gmail.com'}
+                        onClick={() => handleSwitchAccount('janecasimiro27@gmail.com')}
                         className={`w-full text-left px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition flex items-center justify-between ${
-                          user?.email === 'admin@tagpuan.ph'
+                          user?.email === 'janecasimiro27@gmail.com'
                             ? 'bg-blue-50 text-blue-900 border border-blue-200'
                             : 'text-zinc-700 hover:bg-zinc-100'
                         }`}
                       >
-                        <span className="font-bold">🛡️ Administrator</span>
-                        <span className="text-[10px] text-zinc-400 font-mono">admin@</span>
+                        <span className="font-bold">👔 Manager (Acasia)</span>
+                        <span className="text-[10px] text-zinc-400 font-mono">jane@</span>
                       </button>
 
                       <button
@@ -385,7 +421,7 @@ export const Header: React.FC<HeaderProps> = ({
                     <span>Notification Center</span>
                   </button>
 
-                  {isOwner && (
+                  {isMasterSession && (
                     <button
                       onClick={() => {
                         setActiveView('security');

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Shield, Search, Filter, Clock, User, Building2, Download, Lock, CheckCircle2 } from 'lucide-react';
+import { FileText, Shield, Search, Filter, Clock, User, Building2, Download, Lock, CheckCircle2, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../lib/api';
 import { AuditLog } from '../../types/index';
@@ -12,6 +12,7 @@ export const AuditLogsView: React.FC = () => {
   const [actionFilter, setActionFilter] = useState<string>('ALL');
 
   useEffect(() => {
+    if (!isOwner) return;
     const fetchLogs = async () => {
       try {
         setLoading(true);
@@ -24,7 +25,21 @@ export const AuditLogsView: React.FC = () => {
       }
     };
     fetchLogs();
-  }, []);
+  }, [isOwner]);
+
+  if (!isOwner) {
+    return (
+      <div className="bg-white p-12 rounded-3xl border border-red-200 text-center max-w-lg mx-auto mt-12 shadow-sm animate-fadeIn">
+        <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center mx-auto mb-4 font-black">
+          <ShieldAlert className="w-6 h-6" />
+        </div>
+        <h2 className="text-lg font-black text-zinc-900">Access Restricted: Master Owner Only</h2>
+        <p className="text-xs text-zinc-500 mt-2 leading-relaxed">
+          Global audit trails and enterprise security logs are strictly restricted to the Master Owner. Non-master accounts cannot view system logs.
+        </p>
+      </div>
+    );
+  }
 
   const filteredLogs = logs.filter((log) => {
     const matchesSearch =

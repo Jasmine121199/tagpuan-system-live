@@ -22,8 +22,10 @@ import {
   INITIAL_PAYMENT_CONFIGS
 } from '../../server/phase4-data';
 import { supabaseAdapter, isSupabaseConfigured } from './supabase';
-import { googleSheetsPersistence } from './googleSheetsPersistence';
+import { googleSheetsPersistence, PRODUCTION_GOOGLE_SCRIPT_URL } from './googleSheetsPersistence';
 import { generateReceiptForOrder } from '../utils/orderPaymentUtils';
+
+export { PRODUCTION_GOOGLE_SCRIPT_URL };
 
 const nowIso = new Date().toISOString();
 
@@ -128,34 +130,6 @@ export const FALLBACK_USERS: Profile[] = [
     updated_at: nowIso
   },
   {
-    id: 'usr-owner-default',
-    auth_user_id: 'auth-owner-default',
-    full_name: 'Tagpuan Master Owner',
-    email: 'owner@tagpuan.ph',
-    role: 'OWNER',
-    branch_id: null,
-    branch_name: 'All Branches (Global Access)',
-    kiosk_pin: '8888',
-    is_pin_configured: true,
-    is_active: true,
-    created_at: nowIso,
-    updated_at: nowIso
-  },
-  {
-    id: 'usr-admin-system',
-    auth_user_id: 'auth-admin-system',
-    full_name: 'System Administrator (Admin)',
-    email: 'admin@tagpuan.ph',
-    role: 'OWNER',
-    branch_id: null,
-    branch_name: 'All Branches (Global Access)',
-    kiosk_pin: '8888',
-    is_pin_configured: true,
-    is_active: true,
-    created_at: nowIso,
-    updated_at: nowIso
-  },
-  {
     id: 'usr-cashier-narra',
     auth_user_id: 'auth-cashier-narra',
     full_name: 'Angela Reyes (Cashier)',
@@ -234,6 +208,20 @@ export const FALLBACK_USERS: Profile[] = [
     branch_id: FALLBACK_BRANCHES[0].id,
     branch_name: FALLBACK_BRANCHES[0].name,
     kiosk_pin: '1001',
+    is_pin_configured: true,
+    is_active: true,
+    created_at: nowIso,
+    updated_at: nowIso
+  },
+  {
+    id: 'usr-manager-acacia',
+    auth_user_id: 'auth-manager-acacia',
+    full_name: 'Jane Casimiro (Acasia Branch Manager)',
+    email: 'janecasimiro27@gmail.com',
+    role: 'MANAGER',
+    branch_id: '678fd9d5-321c-4353-8d1b-795f0676b242',
+    branch_name: 'Tagpuan - Acacia Branch',
+    kiosk_pin: '1002',
     is_pin_configured: true,
     is_active: true,
     created_at: nowIso,
@@ -342,13 +330,14 @@ export function getActiveFallbackUser(): Profile | null {
   };
 
   // Hard session role locks for emergency recovery accounts
-  if (
-    cleanEmail === 'owner@tagpuan.ph' ||
-    cleanEmail === 'admin@tagpuan.ph' ||
-    cleanEmail === 'janzenmarkglori@gmail.com' ||
-    cleanEmail === 'maryjasmineadlaon121199@gmail.com'
-  ) {
+  if (cleanEmail === 'janzenmarkglori@gmail.com') {
     effective.role = 'OWNER';
+    effective.branch_id = null;
+    effective.branch_name = 'All Branches (Global Access)';
+  } else if (cleanEmail === 'janecasimiro27@gmail.com') {
+    effective.role = 'MANAGER';
+    effective.branch_id = '678fd9d5-321c-4353-8d1b-795f0676b242';
+    effective.branch_name = 'Tagpuan - Acacia Branch';
   } else if (cleanEmail === 'cashier.narra@tagpuan.ph' || cleanEmail === 'cashier@tagpuan.ph') {
     effective.role = 'CASHIER';
   } else if (cleanEmail === 'crew.narra@tagpuan.ph' || cleanEmail === 'kitchen@tagpuan.ph') {
@@ -358,13 +347,13 @@ export function getActiveFallbackUser(): Profile | null {
   } else if (cleanEmail.includes('warehouse')) {
     effective.role = 'WAREHOUSEMAN';
   } else if (matched?.role) {
-    if (matched.role === 'OWNER' && !['owner@tagpuan.ph', 'admin@tagpuan.ph', 'janzenmarkglori@gmail.com', 'maryjasmineadlaon121199@gmail.com'].includes(cleanEmail)) {
+    if (matched.role === 'OWNER' && cleanEmail !== 'janzenmarkglori@gmail.com') {
       effective.role = 'CASHIER';
     } else {
       effective.role = matched.role;
     }
   } else if (savedUser.role) {
-    if (savedUser.role === 'OWNER' && !['owner@tagpuan.ph', 'admin@tagpuan.ph', 'janzenmarkglori@gmail.com', 'maryjasmineadlaon121199@gmail.com'].includes(cleanEmail)) {
+    if (savedUser.role === 'OWNER' && cleanEmail !== 'janzenmarkglori@gmail.com') {
       effective.role = 'CASHIER';
     } else {
       effective.role = savedUser.role;
@@ -391,35 +380,59 @@ export function resolveLoginFallback(email: string): { user: Profile; token: str
     FALLBACK_USERS.find((u) => u.email.toLowerCase() === cleanEmail);
 
   // Recovery seed role override guard: ensure default emergency accounts maintain strict role integrity
-  if (
-    cleanEmail === 'owner@tagpuan.ph' ||
-    cleanEmail === 'admin@tagpuan.ph' ||
-    cleanEmail === 'janzenmarkglori@gmail.com' ||
-    cleanEmail === 'maryjasmineadlaon121199@gmail.com'
-  ) {
-    if (matched) matched = { ...matched, role: 'OWNER' };
+  if (cleanEmail === 'janzenmarkglori@gmail.com') {
+    if (matched) {
+      matched = {
+        ...matched,
+        role: 'OWNER',
+        branch_id: null,
+        branch_name: 'All Branches (Global Access)'
+      };
+    }
+  } else if (cleanEmail === 'janecasimiro27@gmail.com') {
+    if (matched) {
+      matched = {
+        ...matched,
+        role: 'MANAGER',
+        branch_id: '678fd9d5-321c-4353-8d1b-795f0676b242',
+        branch_name: 'Tagpuan - Acacia Branch'
+      };
+    }
   } else if (cleanEmail === 'cashier.narra@tagpuan.ph' || cleanEmail === 'cashier@tagpuan.ph') {
     if (matched) matched = { ...matched, role: 'CASHIER' };
   } else if (cleanEmail === 'crew.narra@tagpuan.ph' || cleanEmail === 'kitchen@tagpuan.ph') {
     if (matched) matched = { ...matched, role: 'KITCHEN' };
   } else if (cleanEmail === 'manager.narra@tagpuan.ph' || cleanEmail === 'manager@tagpuan.ph') {
     if (matched) matched = { ...matched, role: 'MANAGER' };
+  } else if (matched && matched.role === 'OWNER') {
+    // Hard isolation guard: no other account can ever inherit OWNER
+    matched = { ...matched, role: 'CASHIER' };
   }
 
   if (!matched) {
     let inferredRole: UserRole = 'CREW';
-    if (
-      cleanEmail === 'owner@tagpuan.ph' ||
-      cleanEmail === 'admin@tagpuan.ph' ||
-      cleanEmail === 'janzenmarkglori@gmail.com' ||
-      cleanEmail === 'maryjasmineadlaon121199@gmail.com'
-    ) {
+    let assignedBranchId: string | null = FALLBACK_BRANCHES[0].id;
+    let assignedBranchName: string | null = FALLBACK_BRANCHES[0].name;
+
+    if (cleanEmail === 'janzenmarkglori@gmail.com') {
       inferredRole = 'OWNER';
-    } else if (cleanEmail.includes('manager')) inferredRole = 'MANAGER';
-    else if (cleanEmail.includes('cashier')) inferredRole = 'CASHIER';
-    else if (cleanEmail.includes('crew') || cleanEmail.includes('kitchen') || cleanEmail.includes('kds')) inferredRole = 'KITCHEN';
-    else if (cleanEmail.includes('warehouse')) inferredRole = 'WAREHOUSEMAN';
-    else inferredRole = 'CREW';
+      assignedBranchId = null;
+      assignedBranchName = 'All Branches (Global Access)';
+    } else if (cleanEmail === 'janecasimiro27@gmail.com') {
+      inferredRole = 'MANAGER';
+      assignedBranchId = '678fd9d5-321c-4353-8d1b-795f0676b242';
+      assignedBranchName = 'Tagpuan - Acacia Branch';
+    } else if (cleanEmail.includes('manager')) {
+      inferredRole = 'MANAGER';
+    } else if (cleanEmail.includes('cashier')) {
+      inferredRole = 'CASHIER';
+    } else if (cleanEmail.includes('crew') || cleanEmail.includes('kitchen') || cleanEmail.includes('kds')) {
+      inferredRole = 'KITCHEN';
+    } else if (cleanEmail.includes('warehouse')) {
+      inferredRole = 'WAREHOUSEMAN';
+    } else {
+      inferredRole = 'CREW';
+    }
 
     matched = {
       id: `usr-${Date.now()}`,
@@ -427,8 +440,8 @@ export function resolveLoginFallback(email: string): { user: Profile; token: str
       full_name: cleanEmail.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
       email: cleanEmail,
       role: inferredRole,
-      branch_id: inferredRole === 'OWNER' ? null : FALLBACK_BRANCHES[0].id,
-      branch_name: inferredRole === 'OWNER' ? 'All Branches (Global Access)' : FALLBACK_BRANCHES[0].name,
+      branch_id: assignedBranchId,
+      branch_name: assignedBranchName,
       kiosk_pin: inferredRole === 'OWNER' ? '8888' : '1001',
       is_pin_configured: true,
       is_active: true,
@@ -466,8 +479,11 @@ export async function handleApiFallback(urlStr: string, options: RequestInit = {
 
   // --- AUTH ROUTES ---
   if (path === '/auth/login' && method === 'POST') {
-    if (!body.email) {
+    if (!body.email || !body.email.trim()) {
       throw new Error('Email address is required for login.');
+    }
+    if (!body.password || !body.password.trim()) {
+      throw new Error('Password is required for login.');
     }
     return resolveLoginFallback(body.email);
   }

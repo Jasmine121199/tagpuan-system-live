@@ -180,17 +180,22 @@ const MainAppContent: React.FC = () => {
     );
   });
 
-  const isOwnerOrAdmin =
-    !['CASHIER', 'KITCHEN', 'CREW', 'WAREHOUSEMAN'].includes(user?.role || '') &&
-    (isOwner ||
-      user?.role === 'OWNER' ||
-      (user?.role as string) === 'ADMIN' ||
-      isMasterOwnerEmail(user?.email));
+  const isMasterSession = Boolean(
+    isOwner &&
+    user?.role === 'OWNER' &&
+    user?.email &&
+    isMasterOwnerEmail(user.email)
+  );
+
+  const isOwnerOrAdmin = isMasterSession;
 
   // Role-based view authorization checkers
   const isViewAllowedForUser = (view: string, role?: string): boolean => {
     if (!role) return false;
-    if (isOwnerOrAdmin) return true;
+    if (['master-control', 'security', 'users', 'audit'].includes(view)) {
+      return isMasterSession;
+    }
+    if (isMasterSession) return true;
     return isViewAllowedForRole(role, view);
   };
 
@@ -751,6 +756,13 @@ const MainAppContent: React.FC = () => {
         return <BranchListView />;
 
       case 'audit':
+        if (!isMasterSession) {
+          if (user?.role === 'CASHIER') return <POSView />;
+          if (user?.role === 'KITCHEN' || user?.role === 'CREW') return <KDSView />;
+          if (user?.role === 'WAREHOUSEMAN') return <WarehouseDeliveryView />;
+          if (user?.role === 'MANAGER') return <ManagerDashboard setActiveView={setActiveView} />;
+          return <OperationalDashboard setActiveView={setActiveView} />;
+        }
         return <AuditLogsView />;
 
       case 'notifications':

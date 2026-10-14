@@ -5,6 +5,7 @@ import { LayoutDashboard, Users, Building2, FileText, Bell, ChefHat, ShoppingCar
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
 import { useBranch } from '../../context/BranchContext';
+import { isMasterOwnerEmail } from '../../types/index';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -21,6 +22,13 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   const { toggleDecoy } = useBranch();
   const { unreadCount } = useNotifications();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const isMasterSession = Boolean(
+    isOwner &&
+    user?.role === 'OWNER' &&
+    user?.email &&
+    isMasterOwnerEmail(user.email)
+  );
 
   const isKitchen = user?.role === 'KITCHEN' || user?.role === 'CREW';
   const isCashier = user?.role === 'CASHIER';
@@ -230,7 +238,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               <span>Dashboard</span>
             </button>
 
-            {isOwner && (
+            {isMasterSession && (
               <button
                 onClick={() => setActiveView('users')}
                 className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${
@@ -252,7 +260,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
               <span>Branches</span>
             </button>
 
-            {isOwner && (
+            {isMasterSession && (
               <button
                 onClick={() => setActiveView('audit')}
                 className={`flex flex-col items-center py-1 px-3 rounded-xl text-[10px] font-semibold transition ${

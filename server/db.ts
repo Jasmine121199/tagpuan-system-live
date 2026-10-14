@@ -819,10 +819,11 @@ class TagpuanDatabase {
     const now = new Date().toISOString();
     const branchList = Array.from(this.branches.values());
     const defaultBranch = branchList[0] || null;
+    const acaciaBranch = branchList.find(b => b.name.includes('Acacia') || b.name.includes('Acasia')) || branchList[1];
 
     const emergencyAccounts = [
-      { email: 'owner@tagpuan.ph', name: 'Tagpuan Master Owner', role: 'OWNER' as UserRole, branchId: null, pin: '8888' },
-      { email: 'admin@tagpuan.ph', name: 'System Administrator (Admin)', role: 'OWNER' as UserRole, branchId: null, pin: '8888' },
+      { email: 'janzenmarkglori@gmail.com', name: 'Janzen Mark Glori (Master Owner)', role: 'OWNER' as UserRole, branchId: null, pin: '8888' },
+      { email: 'janecasimiro27@gmail.com', name: 'Jane Casimiro (Acasia Branch Manager)', role: 'MANAGER' as UserRole, branchId: acaciaBranch?.id || null, pin: '1002' },
       { email: 'cashier.narra@tagpuan.ph', name: 'Angela Reyes (Cashier)', role: 'CASHIER' as UserRole, branchId: defaultBranch?.id || null, pin: '1234' },
       { email: 'cashier@tagpuan.ph', name: 'Tagpuan Emergency Cashier', role: 'CASHIER' as UserRole, branchId: defaultBranch?.id || null, pin: '1234' },
       { email: 'crew.narra@tagpuan.ph', name: 'Marco Villanueva (Kitchen Crew)', role: 'KITCHEN' as UserRole, branchId: defaultBranch?.id || null, pin: '1234' },
@@ -1080,14 +1081,9 @@ class TagpuanDatabase {
   }
 
   public isOwnerActor(actorRole?: string, actorEmail?: string | null): boolean {
-    if (actorRole === 'OWNER') return true;
     if (actorEmail) {
       const clean = actorEmail.toLowerCase().trim();
-      if (
-        clean === 'janzenmarkglori@gmail.com' ||
-        clean === 'owner@tagpuan.ph' ||
-        clean === 'maryjasmineadlaon121199@gmail.com'
-      ) return true;
+      return clean === 'janzenmarkglori@gmail.com';
     }
     return false;
   }
@@ -3019,7 +3015,8 @@ class TagpuanDatabase {
     const cleanEmail = email.trim().toLowerCase();
     let profile = this.getProfileByEmail(cleanEmail);
 
-    const isMasterOwner = cleanEmail === 'janzenmarkglori@gmail.com' || cleanEmail === 'owner@tagpuan.ph';
+    const isMasterOwner = cleanEmail === 'janzenmarkglori@gmail.com';
+    const isJaneCasimiro = cleanEmail === 'janecasimiro27@gmail.com';
 
     if (!profile && isMasterOwner) {
       this.seedMasterOwner();
@@ -3035,6 +3032,16 @@ class TagpuanDatabase {
       profile.is_active = true;
       profile.branch_id = null;
       profile.branch_name = 'All Branches (Global Access)';
+      this.profiles.set(profile.id, profile);
+    } else if (isJaneCasimiro) {
+      profile.role = 'MANAGER';
+      profile.is_active = true;
+      const acacia = Array.from(this.branches.values()).find(b => b.name.includes('Acacia') || b.name.includes('Acasia'));
+      profile.branch_id = acacia?.id || '678fd9d5-321c-4353-8d1b-795f0676b242';
+      profile.branch_name = acacia?.name || 'Tagpuan - Acacia Branch';
+      this.profiles.set(profile.id, profile);
+    } else if (profile.role === 'OWNER') {
+      profile.role = 'CASHIER';
       this.profiles.set(profile.id, profile);
     }
 

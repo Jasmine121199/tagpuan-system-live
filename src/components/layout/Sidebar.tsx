@@ -42,14 +42,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const { user, isOwner, isManager } = useAuth();
   const { unreadCount } = useNotifications();
 
-  const isOwnerOrAdmin =
-    !['CASHIER', 'KITCHEN', 'CREW', 'WAREHOUSEMAN'].includes(user?.role || '') &&
-    (isOwner ||
-      user?.role === 'OWNER' ||
-      (user?.role as string) === 'ADMIN' ||
-      isMasterOwnerEmail(user?.email));
+  // Strict Master Session: ONLY janzenmarkglori@gmail.com can access Master Owner views
+  const isMasterOwner = Boolean(
+    isOwner &&
+    user?.role === 'OWNER' &&
+    user?.email &&
+    isMasterOwnerEmail(user.email)
+  );
+
+  const isOwnerOrAdmin = isMasterOwner;
 
   const handleNavClick = (viewId: string) => {
+    if (!isMasterOwner && ['master-control', 'security', 'users', 'audit'].includes(viewId)) {
+      return;
+    }
     if (!isOwnerOrAdmin && !isViewAllowedForRole(user?.role, viewId)) {
       return;
     }
@@ -104,7 +110,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'attendance', label: 'Branch Attendance', icon: Clock },
         { id: 'payroll', label: 'Branch Payroll', icon: Wallet },
         { id: 'branches', label: 'Branch Info', icon: Building2 },
-        { id: 'audit', label: 'Branch Logs', icon: FileText },
         { id: 'notifications', label: 'Notifications', icon: Bell, badge: unreadCount },
       ];
     }

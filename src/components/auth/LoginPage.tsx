@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, Lock, Mail, Loader2, ShieldAlert, Sparkles, CheckCircle2, Check } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, Loader2, ShieldAlert, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ForgotPasswordModal } from './ForgotPasswordModal';
-import { FirstOwnerSetupModal } from './FirstOwnerSetupModal';
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
 
 interface LoginPageProps {
@@ -10,7 +9,7 @@ interface LoginPageProps {
   onLaunchPOS?: () => void;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onLaunchKiosk, onLaunchPOS }) => {
+export const LoginPage: React.FC<LoginPageProps> = () => {
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -20,9 +19,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLaunchKiosk, onLaunchPOS
   const [error, setError] = useState<string | null>(null);
   const [resetSuccessToast, setResetSuccessToast] = useState<string | null>(null);
   
-  // Modal states
+  // Modal state
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
-  const [isSetupModalOpen, setIsSetupModalOpen] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -204,121 +202,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLaunchKiosk, onLaunchPOS
           </form>
 
           {/* DISCREET IN-APP PWA INSTALL BUTTON */}
-          <div className="mt-4 pt-4 border-t border-[#f1f5f9]">
+          <div className="mt-5 pt-5 border-t border-[#f1f5f9]">
             <PWAInstallButton variant="login" forceShow={true} />
-          </div>
-
-          {/* Quick Demo Credentials Guide for Evaluation */}
-          <div className="mt-4 pt-4 border-t border-[#f1f5f9]">
-            <div className="flex items-center justify-between text-[11px] text-zinc-500 mb-2">
-              <span className="font-bold text-zinc-700">Phase 1 Default Access:</span>
-              <button
-                type="button"
-                onClick={() => setIsSetupModalOpen(true)}
-                className="text-[11px] text-[#166534] font-bold hover:underline cursor-pointer"
-              >
-                Owner Setup
-              </button>
-            </div>
-            <div className="space-y-1.5">
-              <div 
-                onClick={() => {
-                  setEmail('owner@tagpuan.ph');
-                  setPassword('TagpuanStaff2026!');
-                }}
-                className="p-2.5 rounded-xl bg-[#f8fafc] border border-emerald-200 hover:border-emerald-400 cursor-pointer transition text-[11px] font-mono text-zinc-700 flex items-center justify-between group shadow-sm"
-              >
-                <div>
-                  <span className="text-emerald-900 font-bold">Owner:</span> owner@tagpuan.ph
-                </div>
-                <span className="text-emerald-700 group-hover:text-emerald-900 font-sans font-medium text-[10px] bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Owner Access</span>
-              </div>
-
-              <div 
-                onClick={() => {
-                  setEmail('admin@tagpuan.ph');
-                  setPassword('TagpuanStaff2026!');
-                }}
-                className="p-2.5 rounded-xl bg-[#f8fafc] border border-blue-200 hover:border-blue-400 cursor-pointer transition text-[11px] font-mono text-zinc-700 flex items-center justify-between group shadow-sm"
-              >
-                <div>
-                  <span className="text-blue-900 font-bold">Admin:</span> admin@tagpuan.ph
-                </div>
-                <span className="text-blue-700 group-hover:text-blue-900 font-sans font-medium text-[10px] bg-blue-50 px-2 py-0.5 rounded border border-blue-200">Admin Access</span>
-              </div>
-
-              <div 
-                onClick={() => {
-                  setEmail('cashier.narra@tagpuan.ph');
-                  setPassword('TagpuanStaff2026!');
-                }}
-                className="p-2.5 rounded-xl bg-[#f8fafc] border border-amber-200 hover:border-amber-400 cursor-pointer transition text-[11px] font-mono text-zinc-700 flex items-center justify-between group shadow-sm"
-              >
-                <div>
-                  <span className="text-amber-900 font-bold">Cashier:</span> cashier.narra@tagpuan.ph
-                </div>
-                <span className="text-amber-700 group-hover:text-amber-900 font-sans font-medium text-[10px] bg-amber-50 px-2 py-0.5 rounded border border-amber-200">POS Access</span>
-              </div>
-
-              <div 
-                onClick={() => {
-                  setEmail('crew.narra@tagpuan.ph');
-                  setPassword('TagpuanStaff2026!');
-                }}
-                className="p-2.5 rounded-xl bg-[#f8fafc] border border-rose-200 hover:border-rose-400 cursor-pointer transition text-[11px] font-mono text-zinc-700 flex items-center justify-between group shadow-sm"
-              >
-                <div>
-                  <span className="text-rose-900 font-bold">KDS Kitchen:</span> crew.narra@tagpuan.ph
-                </div>
-                <span className="text-rose-700 group-hover:text-rose-900 font-sans font-medium text-[10px] bg-rose-50 px-2 py-0.5 rounded border border-rose-200">KDS Access</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Quick Terminal Launchers */}
-          <div className="mt-4 pt-4 border-t border-[#f1f5f9] space-y-2">
-            {onLaunchPOS && (
-              <button
-                type="button"
-                id="btn-launch-pos-preview"
-                onClick={onLaunchPOS}
-                className="w-full py-3 px-4 rounded-2xl bg-[#111111] hover:bg-zinc-800 text-white text-xs font-bold transition flex items-center justify-between shadow-md group border border-zinc-700 cursor-pointer"
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded-lg bg-[#CDEBC5] text-[#111111] flex items-center justify-center font-black">
-                    ₱
-                  </div>
-                  <div className="text-left">
-                    <span className="text-white block leading-tight font-bold">POS Cashier Checkout</span>
-                    <span className="text-[10px] text-[#CDEBC5] font-normal">Direct Register & KDS Routing</span>
-                  </div>
-                </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#CDEBC5] text-[#111111] group-hover:scale-105 transition-transform">
-                  Open POS
-                </span>
-              </button>
-            )}
-
-            {onLaunchKiosk && (
-              <button
-                type="button"
-                id="btn-launch-kiosk-preview"
-                onClick={onLaunchKiosk}
-                className="w-full py-2.5 px-4 rounded-2xl bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-bold transition flex items-center justify-between border border-zinc-300 group cursor-pointer"
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="w-6 h-6 rounded-md bg-zinc-800 text-[#CDEBC5] flex items-center justify-center">
-                    <Sparkles className="w-3.5 h-3.5" />
-                  </div>
-                  <div className="text-left">
-                    <span className="block leading-tight text-xs font-semibold">Self-Ordering Kiosk</span>
-                  </div>
-                </div>
-                <span className="text-[10px] font-medium text-zinc-500 group-hover:text-zinc-900">
-                  Customer Mode →
-                </span>
-              </button>
-            )}
           </div>
         </div>
 
@@ -338,11 +223,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLaunchKiosk, onLaunchPOS
           setPassword(updatedPassword);
           setResetSuccessToast('Password successfully updated! You can now log in.');
         }}
-      />
-
-      <FirstOwnerSetupModal
-        isOpen={isSetupModalOpen}
-        onClose={() => setIsSetupModalOpen(false)}
       />
     </div>
   );

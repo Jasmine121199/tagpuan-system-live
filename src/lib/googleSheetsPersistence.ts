@@ -16,10 +16,10 @@ import {
 } from '../../server/phase3-data';
 
 // ============================================================================
-// PRODUCTION GOOGLE APPS SCRIPT WEB APP ENDPOINT
+// PRODUCTION GOOGLE APPS SCRIPT WEB APP ENDPOINT (tagpuan78@gmail.com)
 // ============================================================================
 export const PRODUCTION_GOOGLE_SCRIPT_URL =
-  'https://script.google.com/macros/s/AKfycbwqilwaEX_SEOo6hzUwFuMypKfbjJCla8Gv7kTVZJIOJlkBYe3y_YsHBy5UTiW-j9L6zQ/exec';
+  'https://script.google.com/macros/s/AKfycbz2YjabcSsOyPDtX1KuNgSASQ_xDLtPB-6UEzLXugNwU1flTqk_JV0_C5Cq3TuKk5k60A/exec';
 
 // ============================================================================
 // GOOGLE SHEETS & GOOGLE DRIVE PERSISTENCE LAYER (Apps Script Web App API)
@@ -144,34 +144,6 @@ export const EMERGENCY_MASTER_USERS: Profile[] = [
     updated_at: '2026-01-01T00:00:00.000Z'
   },
   {
-    id: 'usr-owner-default',
-    auth_user_id: 'auth-owner-default',
-    full_name: 'Tagpuan Master Owner',
-    email: 'owner@tagpuan.ph',
-    role: 'OWNER',
-    branch_id: null,
-    branch_name: 'All Branches (Global Access)',
-    kiosk_pin: '8888',
-    is_pin_configured: true,
-    is_active: true,
-    created_at: '2026-01-01T00:00:00.000Z',
-    updated_at: '2026-01-01T00:00:00.000Z'
-  },
-  {
-    id: 'usr-admin-system',
-    auth_user_id: 'auth-admin-system',
-    full_name: 'System Administrator (Admin)',
-    email: 'admin@tagpuan.ph',
-    role: 'OWNER',
-    branch_id: null,
-    branch_name: 'All Branches (Global Access)',
-    kiosk_pin: '8888',
-    is_pin_configured: true,
-    is_active: true,
-    created_at: '2026-01-01T00:00:00.000Z',
-    updated_at: '2026-01-01T00:00:00.000Z'
-  },
-  {
     id: 'usr-cashier-narra',
     auth_user_id: 'auth-cashier-narra',
     full_name: 'Angela Reyes (Cashier)',
@@ -250,6 +222,20 @@ export const EMERGENCY_MASTER_USERS: Profile[] = [
     branch_id: 'c561fe5a-c31c-4657-b040-562004c9daba',
     branch_name: 'Tagpuan - Narra Branch',
     kiosk_pin: '1001',
+    is_pin_configured: true,
+    is_active: true,
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'usr-manager-acacia',
+    auth_user_id: 'auth-manager-acacia',
+    full_name: 'Jane Casimiro (Acasia Branch Manager)',
+    email: 'janecasimiro27@gmail.com',
+    role: 'MANAGER',
+    branch_id: '678fd9d5-321c-4353-8d1b-795f0676b242',
+    branch_name: 'Tagpuan - Acacia Branch',
+    kiosk_pin: '1002',
     is_pin_configured: true,
     is_active: true,
     created_at: '2026-01-01T00:00:00.000Z',
@@ -595,10 +581,13 @@ class GoogleSheetsPersistenceService {
       (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GOOGLE_DRIVE_FOLDER_ID) || '';
 
     const saved = readLocal<Partial<GoogleAppsScriptConfig>>(STORAGE_KEYS.CONFIG, {});
-    const scriptUrl =
-      saved.scriptUrl && saved.scriptUrl.trim().startsWith('https://script.google.com/')
-        ? saved.scriptUrl.trim()
-        : envUrl || PRODUCTION_GOOGLE_SCRIPT_URL;
+    // If saved URL is stale legacy deployment or empty, automatically upgrade to new endpoint
+    const legacyUrl = 'https://script.google.com/macros/s/AKfycbwqilwaEX_SEOo6hzUwFuMypKfbjJCla8Gv7kTVZJIOJlkBYe3y_YsHBy5UTiW-j9L6zQ/exec';
+    let scriptUrl = envUrl || PRODUCTION_GOOGLE_SCRIPT_URL;
+    if (saved.scriptUrl && saved.scriptUrl.trim().startsWith('https://script.google.com/')) {
+      const cleanSaved = saved.scriptUrl.trim();
+      scriptUrl = cleanSaved === legacyUrl ? PRODUCTION_GOOGLE_SCRIPT_URL : cleanSaved;
+    }
 
     return {
       scriptUrl,

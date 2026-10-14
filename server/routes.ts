@@ -45,8 +45,7 @@ function requireRole(...roles: UserRole[]) {
     }
 
     const isMasterOwner = req.user.email && (
-      req.user.email.toLowerCase() === 'janzenmarkglori@gmail.com' ||
-      req.user.email.toLowerCase() === 'owner@tagpuan.ph'
+      req.user.email.toLowerCase() === 'janzenmarkglori@gmail.com'
     );
 
     if (!roles.includes(req.user.role) && !isMasterOwner) {

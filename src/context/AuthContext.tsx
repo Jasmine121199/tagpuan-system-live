@@ -36,6 +36,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const cleanEmail = parsed.email.trim().toLowerCase();
           if (isMasterOwnerEmail(cleanEmail)) {
             parsed.role = 'OWNER';
+            parsed.branch_id = null;
+            parsed.branch_name = 'All Branches (Global Access)';
+          } else if (cleanEmail === 'janecasimiro27@gmail.com') {
+            parsed.role = 'MANAGER';
+            parsed.branch_id = '678fd9d5-321c-4353-8d1b-795f0676b242';
+            parsed.branch_name = 'Tagpuan - Acacia Branch';
           } else if (cleanEmail === 'cashier.narra@tagpuan.ph' || cleanEmail === 'cashier@tagpuan.ph') {
             parsed.role = 'CASHIER';
           } else if (cleanEmail === 'crew.narra@tagpuan.ph' || cleanEmail === 'kitchen@tagpuan.ph') {
@@ -74,11 +80,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const currentUser = await api.getCurrentUser();
       if (currentUser) {
-        // Enforce strict role lock: Non-master emails can NEVER become OWNER
-        if (currentUser.role === 'OWNER' && !isMasterOwnerEmail(currentUser.email)) {
-          const cachedRaw = localStorage.getItem('tagpuan_fallback_user');
-          const cachedUser = cachedRaw ? JSON.parse(cachedRaw) : null;
-          currentUser.role = (cachedUser?.role && cachedUser.role !== 'OWNER') ? cachedUser.role : 'CASHIER';
+        const clean = (currentUser.email || '').toLowerCase().trim();
+        if (isMasterOwnerEmail(clean)) {
+          currentUser.role = 'OWNER';
+          currentUser.branch_id = null;
+          currentUser.branch_name = 'All Branches (Global Access)';
+        } else if (clean === 'janecasimiro27@gmail.com') {
+          currentUser.role = 'MANAGER';
+          currentUser.branch_id = '678fd9d5-321c-4353-8d1b-795f0676b242';
+          currentUser.branch_name = 'Tagpuan - Acacia Branch';
+        } else if (currentUser.role === 'OWNER') {
+          // Hard guard: non-master emails cannot be OWNER
+          currentUser.role = 'CASHIER';
         }
         setUser(currentUser);
         localStorage.setItem('tagpuan_fallback_user', JSON.stringify(currentUser));
@@ -114,13 +127,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Reset any active views across all role keys to prevent permission leakage on account switch
       if (typeof window !== 'undefined') {
         localStorage.removeItem('tagpuan_active_view');
+        localStorage.removeItem('tagpuan_active_view_OWNER');
+        localStorage.removeItem('tagpuan_active_view_CASHIER');
+        localStorage.removeItem('tagpuan_active_view_KITCHEN');
+        localStorage.removeItem('tagpuan_active_view_CREW');
+        localStorage.removeItem('tagpuan_active_view_MANAGER');
+        localStorage.removeItem('tagpuan_active_view_WAREHOUSEMAN');
+        localStorage.removeItem('tagpuan_active_view_user');
         localStorage.setItem('tagpuan_active_view', defaultView);
       }
 
       const res = await api.login(email, password, rememberMe);
       const authenticatedUser = res.user;
 
-      if (authenticatedUser.role === 'OWNER' && !isMasterOwnerEmail(authenticatedUser.email)) {
+      const cleanAuthEmail = (authenticatedUser.email || '').toLowerCase().trim();
+      if (isMasterOwnerEmail(cleanAuthEmail)) {
+        authenticatedUser.role = 'OWNER';
+        authenticatedUser.branch_id = null;
+        authenticatedUser.branch_name = 'All Branches (Global Access)';
+      } else if (cleanAuthEmail === 'janecasimiro27@gmail.com') {
+        authenticatedUser.role = 'MANAGER';
+        authenticatedUser.branch_id = '678fd9d5-321c-4353-8d1b-795f0676b242';
+        authenticatedUser.branch_name = 'Tagpuan - Acacia Branch';
+      } else if (authenticatedUser.role === 'OWNER') {
+        // Hard isolation guard: non-master emails cannot inherit OWNER role
         authenticatedUser.role = 'CASHIER';
       }
 
@@ -185,8 +215,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return allowedRoles.includes(user.role);
   };
 
-  // Hard Isolation: Cashiers, Kitchen, Crew, and Warehouseman can NEVER be Owner or Manager
-  const isOwner = !!user && (user.role === 'OWNER' || isMasterOwnerEmail(user.email)) && !['CASHIER', 'KITCHEN', 'CREW', 'WAREHOUSEMAN'].includes(user.role);
+  // Hard Isolation: Only janzenmarkglori@gmail.com is the sole Master Owner with full global control
+  const isOwner = !!user && isMasterOwnerEmail(user.email);
   const isManager = !!user && (user.role === 'MANAGER' || isOwner) && !['CASHIER', 'KITCHEN', 'CREW', 'WAREHOUSEMAN'].includes(user.role);
   const assignedBranchId = isOwner ? null : (user?.branch_id || null);
 
